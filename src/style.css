@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局样式与动画 */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+
+.glass-nav {
+    background-color: rgba(255,255,255,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(255,255,255,0.3);
+}
+
+/* 交互动画 */
+.active-scale:active { transform: scale(0.96); transition: transform 0.1s; }
+.touch-scale:active { transform: scale(0.98); transition: transform 0.1s; }
+
+/* 转场动画 */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
