@@ -104,6 +104,18 @@ const addManualCode = () => {
   manualCode.value = '';
 };
 
+// 生成直入模式单号
+const generateDirectCode = () => {
+  return `DIRECT_${Date.now()}`;
+};
+
+// 直入模式：自动添加一条记录
+const addDirectEntry = () => {
+  const code = generateDirectCode();
+  if (batchList.value.includes(code)) return showToast('单号已存在', 'warning');
+  batchList.value.push(code);
+};
+
 // 添加处理相册图片选择的方法
 const handleImageSelect = async (event) => {
   const file = event.target.files[0];
@@ -115,12 +127,14 @@ const handleImageSelect = async (event) => {
   try {
     // 检查浏览器是否支持 BarcodeDetector API
     if (!window.BarcodeDetector) {
-      showToast('当前浏览器不支持条形码识别', 'warning');
+      showToast('暂未集成OCR', 'warning');
       return;
     }
 
     // 创建 BarcodeDetector 实例
-    const barcodeDetector = new BarcodeDetector();
+    const barcodeDetector = new BarcodeDetector({
+      formats: ['qr_code', 'code_128', 'ean_13', 'ean_8', 'data_matrix']
+    });
     
     // 从文件创建图像对象
     const img = new Image();
@@ -132,15 +146,23 @@ const handleImageSelect = async (event) => {
         const barcodes = await barcodeDetector.detect(img);
         
         if (barcodes.length > 0) {
-          // 取第一个识别到的条形码
-          const code = barcodes[0].rawValue;
+          // 处理所有识别到的条形码
+          let addedCount = 0;
+          barcodes.forEach(barcode => {
+            const code = barcode.rawValue;
+            
+            // 检查是否已存在
+            if (!batchList.value.includes(code)) {
+              batchList.value.push(code);
+              addedCount++;
+            }
+          });
           
-          // 检查是否已存在
-          if (batchList.value.includes(code)) {
-            showToast('单号已存在', 'warning');
+          // 显示成功提示信息
+          if (addedCount > 0) {
+            showToast(`识别成功: 新增${addedCount}个单号`, 'success');
           } else {
-            batchList.value.push(code);
-            showToast(`识别成功: ${code}`, 'success');
+            showToast('识别成功: 但单号已存在', 'warning');
           }
         } else {
           // 没有识别到条形码，保持原行为
@@ -166,18 +188,6 @@ const handleImageSelect = async (event) => {
     console.error('处理图片时发生错误:', err);
     showToast('处理图片时发生错误', 'error');
   }
-};
-
-// 生成直入模式单号
-const generateDirectCode = () => {
-  return `DIRECT_${Date.now()}`;
-};
-
-// 直入模式：自动添加一条记录
-const addDirectEntry = () => {
-  const code = generateDirectCode();
-  if (batchList.value.includes(code)) return showToast('单号已存在', 'warning');
-  batchList.value.push(code);
 };
 
 // 价格记忆
@@ -259,10 +269,7 @@ const handleScanned = (code) => {
   
   if (target) {
     target.verified = true;
-    scanResult.value = { 
-      type: 'success', 
-      msg: `${target.content} x${target.quantity} (${target.tracking}) 已入库` 
-    };
+    scanResult.value = { type: 'success', msg: `已核验: ${target.content}` };
     if (navigator.vibrate) navigator.vibrate(100);
     setTimeout(() => scanResult.value = null, 1500);
   } else {
