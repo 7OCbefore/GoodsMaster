@@ -9,5 +9,5 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
-  base: './' // 确保静态部署时的路径正确
+  base: '/GoodsMaster/' // 确保静态部署时的路径正确
 })
