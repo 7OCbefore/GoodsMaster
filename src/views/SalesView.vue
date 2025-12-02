@@ -52,8 +52,8 @@ function addToCart(item) {
   } else {
     let price = sellPrice.value[item.name];
     if (!price) {
-        price = Math.ceil(item.averageCost * 1.2);
-        showToast(`未定价，按成本1.2倍预填`, 'warning');
+        price = Math.ceil(item.averageCost * 1.1);
+        showToast(`未定价，按成本1.1倍预填`, 'warning');
     }
     cart.value.push({
       name: item.name,
@@ -91,7 +91,7 @@ function checkout() {
     note: ''
   };
   salesHistory.value.unshift(order);
-  showToast('收款成功', 'success');
+  showToast('开单成功', 'success');
   cart.value = [];
   customerName.value = '';
   isCartOpen.value = false;
@@ -272,7 +272,7 @@ const handleEditNote = () => {
              <input v-model="customerName" placeholder="客户姓名 (选填)" class="w-full bg-white p-3.5 rounded-2xl font-bold outline-none text-sm text-center shadow-sm focus:ring-2 focus:ring-primary/10 transition-all">
              <button @click="checkout" class="w-full bg-[#0A84FF] text-white font-bold text-lg py-4 rounded-[24px] shadow-xl active:scale-[0.98] transition-transform flex justify-center items-center gap-2">
                <i class="ph-bold ph-check-circle text-2xl"></i> 
-               <span>收款 ¥{{ formatCurrency(cartTotal) }}</span>
+               <span>开单 ¥{{ formatCurrency(cartTotal) }}</span>
              </button>
           </div>
         </div>

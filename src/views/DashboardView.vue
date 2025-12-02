@@ -501,10 +501,10 @@ const handleExport = async () => {
 
       <!-- 4. 次级指标网格 -->
       <div class="grid grid-cols-2 gap-4">
-        <!-- 客单价 -->
+        <!-- 日均销售额 -->
         <div class="bg-white rounded-[24px] p-4 shadow-sm border border-gray-100">
-          <div class="text-[10px] text-gray-400 font-bold uppercase mb-1">平均客单价</div>
-          <div class="text-2xl font-bold text-primary">¥{{ formatCurrency(dailyStats.aov) }}</div>
+          <div class="text-[10px] text-gray-400 font-bold uppercase mb-1">日均销售额</div>
+          <div class="text-2xl font-bold text-primary">¥{{ formatCurrency(dailyStats.revenue) }}</div>
         </div>
         <!-- 缺货预警 (带交互) -->
         <div class="bg-white rounded-[24px] p-4 shadow-sm border border-gray-100 relative overflow-hidden">

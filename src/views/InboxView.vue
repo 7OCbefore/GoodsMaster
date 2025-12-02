@@ -126,67 +126,84 @@ const handleImageSelect = async (event) => {
   
   try {
     // 检查浏览器是否支持 BarcodeDetector API
-    if (!window.BarcodeDetector) {
-      showToast('暂未集成OCR', 'warning');
+    if (!('BarcodeDetector' in window)) {
+      showToast('当前浏览器不支持条形码识别', 'warning');
       return;
     }
 
-    // 创建 BarcodeDetector 实例
+    // 检查是否至少有一种格式受支持
+    const formats = await BarcodeDetector.getSupportedFormats();
+    if (!formats || formats.length === 0) {
+      showToast('当前浏览器不支持条形码识别', 'warning');
+      return;
+    }
+
+    // 创建 BarcodeDetector 实例，只使用受支持的格式
     const barcodeDetector = new BarcodeDetector({
-      formats: ['qr_code', 'code_128', 'ean_13', 'ean_8', 'data_matrix']
+      formats: formats.filter(format => 
+        ['qr_code', 'code_128', 'ean_13', 'ean_8', 'data_matrix'].includes(format))
     });
     
     // 从文件创建图像对象
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
     
-    img.onload = async () => {
-      try {
-        // 检测条形码
-        const barcodes = await barcodeDetector.detect(img);
-        
-        if (barcodes.length > 0) {
-          // 处理所有识别到的条形码
-          let addedCount = 0;
-          barcodes.forEach(barcode => {
-            const code = barcode.rawValue;
-            
-            // 检查是否已存在
-            if (!batchList.value.includes(code)) {
-              batchList.value.push(code);
-              addedCount++;
-            }
-          });
+    // 使用 Promise 包装图片加载过程，确保正确处理异步操作
+    await new Promise((resolve, reject) => {
+      img.onload = async () => {
+        try {
+          // 检测条形码
+          const barcodes = await barcodeDetector.detect(img);
           
-          // 显示成功提示信息
-          if (addedCount > 0) {
-            showToast(`识别成功: 新增${addedCount}个单号`, 'success');
+          if (barcodes.length > 0) {
+            // 处理所有识别到的条形码
+            let addedCount = 0;
+            barcodes.forEach(barcode => {
+              const code = barcode.rawValue;
+              
+              // 检查是否已存在
+              if (!batchList.value.includes(code)) {
+                batchList.value.push(code);
+                addedCount++;
+              }
+            });
+            
+            // 显示成功提示信息
+            if (addedCount > 0) {
+              showToast(`识别成功: 新增${addedCount}个单号`, 'success');
+            } else {
+              showToast('识别成功: 但单号已存在', 'warning');
+            }
           } else {
-            showToast('识别成功: 但单号已存在', 'warning');
+            // 没有识别到条形码
+            showToast('未识别到条形码，请确保图片清晰且包含有效条形码', 'warning');
           }
-        } else {
-          // 没有识别到条形码，保持原行为
-          showToast('暂未集成OCR', 'warning');
+          
+          // 清理对象URL
+          URL.revokeObjectURL(objectUrl);
+          resolve();
+        } catch (err) {
+          console.error('条形码识别错误:', err);
+          showToast('识别失败，请重试', 'error');
+          URL.revokeObjectURL(objectUrl);
+          reject(err);
         }
-        
-        // 清理对象URL
+      };
+      
+      img.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-      } catch (err) {
-        console.error('条形码识别错误:', err);
-        showToast('识别失败，请重试', 'error');
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-    
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      showToast('图片加载失败', 'error');
-    };
-    
-    img.src = objectUrl;
+        showToast('图片加载失败', 'error');
+        reject(new Error('图片加载失败'));
+      };
+      
+      img.src = objectUrl;
+    });
   } catch (err) {
     console.error('处理图片时发生错误:', err);
-    showToast('处理图片时发生错误', 'error');
+    // 只有在不是由内部reject触发的情况下才显示通用错误消息
+    if (err.message !== '图片加载失败') {
+      showToast('处理图片时发生错误', 'error');
+    }
   }
 };
 
@@ -286,6 +303,7 @@ const stopScan = () => {
   isScanOpen.value = false;
   if (scanStream) scanStream.getTracks().forEach(t => t.stop());
 };
+
 </script>
 
 <template>
