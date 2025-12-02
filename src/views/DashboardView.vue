@@ -403,12 +403,12 @@ const handleEditNote = () => {
               
               <!-- 柱子 -->
               <div 
-                class="w-full rounded-t-xl transition-all duration-500 min-h-[20px] relative overflow-hidden"
+                class="w-full rounded-t-xl transition-all duration-500 min-h-[0px] relative overflow-hidden"
                 :class="[
                   point.active ? 'bg-gradient-to-t from-primary to-accent shadow-lg' : 'bg-gradient-to-t from-primary/60 to-accent/60',
                   selectedBarIndex === i ? 'shadow-xl ring-2 ring-primary/30' : ''
                 ]"
-                :style="{height: (chartData.values[i] / chartData.max) * 100 >= 25 ? (chartData.values[i] / chartData.max) * 75 + 25 + '%' : (chartData.values[i] / chartData.max) * 100 + '%'}"
+                :style="{height: chartData.values[i] === 0 ? '0%' : Math.max(30, (chartData.values[i] / chartData.max) * 70 + 30) + '%'}"
               >
                 <!-- 顶部高亮 -->
                 <div class="absolute top-0 inset-x-0 h-1 bg-white/30"></div>
