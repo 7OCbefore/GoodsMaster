@@ -269,7 +269,10 @@ const handleScanned = (code) => {
   
   if (target) {
     target.verified = true;
-    scanResult.value = { type: 'success', msg: `已核验: ${target.content}` };
+    scanResult.value = { 
+      type: 'success', 
+      msg: `${target.content} x${target.quantity}\n(${target.tracking}) 已入库` 
+    };
     if (navigator.vibrate) navigator.vibrate(100);
     setTimeout(() => scanResult.value = null, 1500);
   } else {
@@ -443,7 +446,7 @@ const stopScan = () => {
           </div>
           <!-- Scan Result Toast -->
           <div v-if="scanResult" class="absolute bottom-20 left-0 w-full flex justify-center">
-            <div class="px-6 py-3 rounded-full font-bold shadow-xl flex items-center gap-2" :class="scanResult.type==='success'?'bg-success text-white':'bg-danger text-white'">
+            <div class="px-6 py-3 rounded-full font-bold shadow-xl flex items-center gap-2" :class="scanResult.type==='success'?'bg-success text-white':'bg-danger text-white'" style="white-space: pre-line;">
               <i :class="scanResult.type==='success'?'ph-bold ph-check':'ph-bold ph-warning'"></i>
               {{ scanResult.msg }}
             </div>

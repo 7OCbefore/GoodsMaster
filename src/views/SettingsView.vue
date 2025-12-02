@@ -36,7 +36,20 @@ const handleImport = (e) => {
         content: '此操作将覆盖当前所有数据，且不可撤销。确定继续吗？',
         isDanger: true,
         action: () => {
-          if (data.packages) packages.value = data.packages;
+          if (data.packages) {
+            // --- 数据清洗逻辑 ---
+            data.packages.forEach(p => {
+              // 如果没有 batchId，尝试生成一个
+              if (!p.batchId) {
+                // 策略：使用 "FIX_" + 时间戳 + 商品名 作为批次号
+                // 这样同一时间(毫秒级)录入的同名商品会被归为一批
+                // 如果你的旧数据时间戳并不完全一致，可以只取到分钟级，例如: Math.floor(p.timestamp / 60000)
+                p.batchId = `FIX_${p.timestamp}_${p.content}`; 
+              }
+            });
+            // ------------------
+            packages.value = data.packages;
+          }
           if (data.goodsList) goodsList.value = data.goodsList;
           if (data.salesHistory) salesHistory.value = data.salesHistory;
           if (data.sellPrice) sellPrice.value = data.sellPrice;

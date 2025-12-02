@@ -379,7 +379,7 @@ const handleEditNote = () => {
         </Transition>
         
         <!-- 柱状图 -->
-        <div class="h-60 flex items-end gap-1.5 relative overflow-x-auto hide-scrollbar">
+        <div class="h-60 flex items-end gap-1.5 relative overflow-x-auto hide-scrollbar px-2 -mx-2">
           <!-- Y轴参考线 -->
           <div class="absolute inset-0 flex flex-col justify-between pointer-events-none">
             <div class="border-t border-dashed border-gray-200"></div>
