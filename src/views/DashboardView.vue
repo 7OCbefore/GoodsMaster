@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, inject } from 'vue';
 import { useStore } from '../composables/useStore';
+import { useExport } from '../composables/useExport';
 
-const { selectedDate, dailyStats, chartData, lowStockItems, topSelling, formatCurrency, refundOrder, updateOrderNote } = useStore();
+const { selectedDate, dailyStats, chartData, lowStockItems, topSelling, formatCurrency, refundOrder, updateOrderNote, salesHistory, inventoryList } = useStore();
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
+const { exportToExcel } = useExport();
 
 // --- 日期处理 ---
 const showDatePicker = ref(false);
@@ -190,6 +192,30 @@ const handleEditNote = () => {
     }
   });
 };
+
+// --- Excel 导出 ---
+const isExporting = ref(false);
+
+const handleExport = async () => {
+  isExporting.value = true;
+  
+  // 模拟异步操作，给用户视觉反馈
+  await new Promise(resolve => setTimeout(resolve, 300));
+  
+  const result = exportToExcel({
+    salesHistory: salesHistory.value,
+    inventoryList: inventoryList.value,
+    selectedDate: selectedDate.value
+  });
+  
+  isExporting.value = false;
+  
+  if (result.success) {
+    showToast(`✅ 导出成功：${result.fileName}`);
+  } else {
+    showToast(`❌ 导出失败：${result.error}`);
+  }
+};
 </script>
 
 <template>
@@ -201,6 +227,17 @@ const handleEditNote = () => {
             <h1 class="text-2xl font-extrabold text-primary tracking-tight leading-none">经营总览</h1>
             
             <div class="flex items-center gap-2 relative">
+                <!-- Excel 导出按钮 -->
+                <button 
+                    @click="handleExport"
+                    :disabled="isExporting"
+                    class="bg-white p-2 rounded-full border border-gray-200 shadow-sm flex items-center justify-center cursor-pointer active:bg-gray-50 transition-all hover:border-green-500 hover:bg-green-50 min-h-[36px] min-w-[36px] disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="导出数据到Excel"
+                >
+                    <i v-if="!isExporting" class="ph-bold ph-microsoft-excel-logo text-green-600 text-lg"></i>
+                    <i v-else class="ph-bold ph-spinner text-green-600 text-lg animate-spin"></i>
+                </button>
+
                 <!-- 日期选择器按钮 -->
                 <button 
                     @click="toggleDatePicker"

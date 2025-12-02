@@ -8,8 +8,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@phosphor-icons/web": "^2.0.3",
     "vue": "^3.3.4",
-    "@phosphor-icons/web": "^2.0.3"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.2.3",

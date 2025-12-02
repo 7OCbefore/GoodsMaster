@@ -8,7 +8,7 @@ import SettingsView from './views/SettingsView.vue';
 import Toast from './components/Toast.vue';
 import Dialog from './components/Dialog.vue';
 
-const currentTab = ref('inbox');
+const currentTab = ref('dashboard');
 
 // --- Global UI State ---
 const toastState = reactive({ show: false, msg: '', type: 'success' });
