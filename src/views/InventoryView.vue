@@ -16,22 +16,22 @@ const filteredList = computed(() => {
       <h1 class="text-[32px] font-bold text-primary tracking-tight">库存资产</h1>
     </header>
 
-    <div class="bg-gradient-to-br from-gray-800 to-black rounded-[32px] p-6 text-white shadow-2xl relative overflow-hidden">
+    <div class="bg-gradient-to-r from-primary to-accent rounded-[32px] p-6 shadow-xl relative overflow-hidden border border-gray-100">
       <div class="relative z-10">
-        <div class="flex items-center gap-2 text-white/50 text-xs font-bold uppercase mb-2 tracking-widest">
-          <i class="ph-fill ph-vault"></i> 仓库总成本
+        <div class="flex items-center gap-2 text-white/60 text-xs font-bold uppercase mb-2 tracking-widest">
+          <i class="ph-fill ph-vault text-white"></i> 仓库总成本
         </div>
-        <div class="text-[40px] font-bold tracking-tight mb-8 font-mono">
-          <span class="text-[24px] opacity-60 font-sans">¥</span>{{ formatCurrency(totalInventoryValue) }}
+        <div class="text-[40px] font-bold tracking-tight mb-8 font-mono text-white">
+          <span class="text-[24px] text-white/70 font-sans">¥</span>{{ formatCurrency(totalInventoryValue) }}
         </div>
         <div class="flex gap-8 border-t border-white/10 pt-4">
           <div>
-            <div class="text-[10px] text-white/40 mb-1 font-bold uppercase">SKU 种类</div>
-            <div class="text-xl font-bold">{{ inventoryList.length }}</div>
+            <div class="text-[10px] text-white/60 mb-1 font-bold uppercase">SKU 种类</div>
+            <div class="text-xl font-bold text-white">{{ inventoryList.length }}</div>
           </div>
           <div class="border-l border-white/10 pl-8">
-            <div class="text-[10px] text-white/40 mb-1 font-bold uppercase">总库存量</div>
-            <div class="text-xl font-bold">{{ totalInventoryCount }} <span class="text-xs opacity-60 font-medium">件</span></div>
+            <div class="text-[10px] text-white/60 mb-1 font-bold uppercase">总库存量</div>
+            <div class="text-xl font-bold text-white">{{ totalInventoryCount }} <span class="text-xs text-white/70 font-medium">件</span></div>
           </div>
         </div>
       </div>
@@ -39,8 +39,8 @@ const filteredList = computed(() => {
 
     <!-- Filters -->
     <div class="flex items-center gap-2 overflow-x-auto hide-scrollbar py-2">
-      <button @click="search=''" :class="!search?'bg-primary text-white':'bg-white text-gray-500 border border-gray-100'" class="px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap shadow-sm transition-colors">全部</button>
-      <button v-for="g in goodsList" :key="g" @click="search=g" :class="search===g?'bg-primary text-white':'bg-white text-gray-500 border border-gray-100'" class="px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap shadow-sm transition-colors">{{g}}</button>
+      <button @click="search=''" :class="!search?'bg-[#0A84FF] text-white':'bg-white text-gray-500 border border-gray-100'" class="px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap shadow-sm transition-colors">全部</button>
+      <button v-for="g in goodsList" :key="g" @click="search=g" :class="search===g?'bg-[#0A84FF] text-white':'bg-white text-gray-500 border border-gray-100'" class="px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap shadow-sm transition-colors">{{g}}</button>
     </div>
 
     <div class="space-y-3">

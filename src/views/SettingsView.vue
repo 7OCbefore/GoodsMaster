@@ -90,7 +90,7 @@ const handleImport = (e) => {
     </div>
 
     <div class="text-center space-y-1">
-      <div class="w-12 h-12 bg-primary rounded-2xl mx-auto mb-3 shadow-xl flex items-center justify-center text-white">
+      <div class="w-12 h-12 bg-[#0A84FF] rounded-2xl mx-auto mb-3 shadow-xl flex items-center justify-center text-white">
         <i class="ph-fill ph-package text-2xl"></i>
       </div>
       <p class="text-xs font-bold text-primary">GoodsMaster Pro</p>

@@ -95,7 +95,8 @@ export function useStore() {
     // 真实图表数据 (过去7天)
     const chartData = computed(() => {
         const days = [];
-        const data = [];
+        const profitData = [];
+        const revenueData = [];
         const anchor = new Date(selectedDate.value);
         
         for (let i = 6; i >= 0; i--) {
@@ -107,13 +108,15 @@ export function useStore() {
                 s.status !== 'refunded' && isSameDay(s.timestamp, d)
             );
             const dayProfit = dailySales.reduce((acc, cur) => acc + cur.totalProfit, 0);
+            const dayRevenue = dailySales.reduce((acc, cur) => acc + cur.totalAmount, 0);
             
             days.push({ label: startStr, active: isSameDay(d, selectedDate.value) });
-            data.push(dayProfit);
+            profitData.push(dayProfit);
+            revenueData.push(dayRevenue);
         }
         
-        const maxVal = Math.max(...data, 10); // 最小刻度10，防止全0时无法渲染
-        return { labels: days, values: data, max: maxVal };
+        const maxVal = Math.max(...revenueData, 10); // 最小刻度10，防止全0时无法渲染
+        return { labels: days, values: profitData, revenueValues: revenueData, max: maxVal };
     });
 
     const topSelling = computed(() => {
@@ -149,6 +152,7 @@ export function useStore() {
         packages, goodsList, salesHistory, sellPrice, selectedDate,
         inventoryList, totalInventoryValue, totalInventoryCount,
         dailyStats, topSelling, lowStockItems, chartData,
-        formatCurrency, refundOrder, updateOrderNote
+        formatCurrency, refundOrder, updateOrderNote,
+        isSameDay
     };
 }

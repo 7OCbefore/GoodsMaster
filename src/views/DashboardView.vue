@@ -7,22 +7,9 @@ const showToast = inject('showToast');
 const showDialog = inject('showDialog');
 
 // --- 日期处理 ---
-// 使用 getter/setter 确保与 input type="date" 的字符串格式双向绑定
-const dateInputVal = computed({
-  get: () => {
-    // 处理时区偏移，确保显示的是本地日期的 YYYY-MM-DD
-    const d = new Date(selectedDate.value);
-    const offset = d.getTimezoneOffset() * 60000;
-    const localISOTime = (new Date(d - offset)).toISOString().slice(0, 10);
-    return localISOTime;
-  },
-  set: (val) => {
-    // 重新设为当天的 00:00:00
-    const d = new Date(val);
-    d.setHours(0,0,0,0);
-    selectedDate.value = d;
-  }
-});
+const showDatePicker = ref(false);
+const currentMonth = ref(new Date());
+const selectedBarIndex = ref(null); // 选中的柱状图索引
 
 const isToday = computed(() => {
   const today = new Date();
@@ -30,11 +17,141 @@ const isToday = computed(() => {
   return today.toDateString() === sel.toDateString();
 });
 
-const setToday = () => selectedDate.value = new Date();
+const setToday = () => {
+  selectedDate.value = new Date();
+  selectedDate.value.setHours(0,0,0,0);
+  currentMonth.value = new Date();
+  showDatePicker.value = false;
+};
 
 const displayDate = computed(() => {
   return new Date(selectedDate.value).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', weekday: 'short' });
 });
+
+const displayWeekday = computed(() => {
+  return new Date(selectedDate.value).toLocaleDateString('zh-CN', { weekday: 'long' });
+});
+
+// 趋势图表数据处理
+const trendStats = computed(() => {
+  const totalRevenue = chartData.value.revenueValues.reduce((sum, val) => sum + val, 0);
+  const avgRevenue = totalRevenue / chartData.value.revenueValues.length;
+  const maxRevenue = Math.max(...chartData.value.revenueValues);
+  const minRevenue = Math.min(...chartData.value.revenueValues);
+  
+  // 计算趋势（与前一天比较）
+  const today = chartData.value.revenueValues[chartData.value.revenueValues.length - 1];
+  const yesterday = chartData.value.revenueValues[chartData.value.revenueValues.length - 2];
+  const trend = today > yesterday ? 'up' : today < yesterday ? 'down' : 'stable';
+  const trendPercent = yesterday > 0 ? (((today - yesterday) / yesterday) * 100).toFixed(1) : 0;
+  
+  return {
+    total: totalRevenue,
+    avg: avgRevenue,
+    max: maxRevenue,
+    min: minRevenue,
+    trend,
+    trendPercent
+  };
+});
+
+// 获取柱子对应的完整日期
+const getBarDateLabel = (index) => {
+  if (index === null || index === undefined) return '';
+  const anchor = new Date(selectedDate.value);
+  const targetDate = new Date(anchor);
+  targetDate.setDate(targetDate.getDate() - (6 - index));
+  return targetDate.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', weekday: 'short' });
+};
+
+// 移动端点击切换柱子选中状态
+const toggleBar = (index) => {
+  selectedBarIndex.value = selectedBarIndex.value === index ? null : index;
+};
+
+// 切换日期选择器显示
+const toggleDatePicker = () => {
+  showDatePicker.value = !showDatePicker.value;
+  if (showDatePicker.value) {
+    currentMonth.value = new Date(selectedDate.value);
+  }
+};
+
+// 生成日历数据
+const calendarDays = computed(() => {
+  const year = currentMonth.value.getFullYear();
+  const month = currentMonth.value.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const prevLastDay = new Date(year, month, 0);
+  
+  const firstDayOfWeek = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  const daysInPrevMonth = prevLastDay.getDate();
+  
+  const days = [];
+  
+  // 上个月的日期
+  for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+    days.push({
+      date: daysInPrevMonth - i,
+      isCurrentMonth: false,
+      fullDate: new Date(year, month - 1, daysInPrevMonth - i)
+    });
+  }
+  
+  // 当前月的日期
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push({
+      date: i,
+      isCurrentMonth: true,
+      fullDate: new Date(year, month, i)
+    });
+  }
+  
+  // 下个月的日期（补齐到6行）
+  const remainingDays = 42 - days.length;
+  for (let i = 1; i <= remainingDays; i++) {
+    days.push({
+      date: i,
+      isCurrentMonth: false,
+      fullDate: new Date(year, month + 1, i)
+    });
+  }
+  
+  return days;
+});
+
+const currentMonthYear = computed(() => {
+  return currentMonth.value.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
+});
+
+const prevMonth = () => {
+  currentMonth.value = new Date(currentMonth.value.getFullYear(), currentMonth.value.getMonth() - 1);
+};
+
+const nextMonth = () => {
+  currentMonth.value = new Date(currentMonth.value.getFullYear(), currentMonth.value.getMonth() + 1);
+};
+
+const selectDate = (day) => {
+  if (!day.isCurrentMonth) {
+    currentMonth.value = new Date(day.fullDate);
+  }
+  selectedDate.value = new Date(day.fullDate);
+  selectedDate.value.setHours(0,0,0,0);
+  showDatePicker.value = false;
+};
+
+const isSelectedDate = (day) => {
+  const sel = new Date(selectedDate.value);
+  return day.fullDate.toDateString() === sel.toDateString();
+};
+
+const isTodayDate = (day) => {
+  const today = new Date();
+  return day.fullDate.toDateString() === today.toDateString();
+};
 
 // --- 订单详情抽屉 ---
 const isDetailOpen = ref(false);
@@ -78,83 +195,269 @@ const handleEditNote = () => {
 <template>
   <div class="flex flex-col h-full bg-[#F5F5F7]">
     
-    <!-- 1. 顶部导航 (日期控制) - 修复对齐 -->
-    <header class="px-5 py-3 pt-safe bg-surface sticky top-0 z-30 flex items-center justify-between shadow-sm border-b border-gray-100">
-        <h1 class="text-2xl font-extrabold text-primary tracking-tight">经营总览</h1>
-        
-        <div class="flex items-center gap-2">
-            <!-- 日期选择器按钮 -->
-            <div class="relative bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm flex items-center gap-2 active:bg-gray-50 transition-colors overflow-hidden">
-                <i class="ph-bold ph-calendar-blank text-accent"></i>
-                <span class="text-sm font-bold text-primary">{{ displayDate }}</span>
-                <!-- 透明 Input 覆盖，确保 w-full h-full 点击区域 -->
-                <input 
-                    type="date" 
-                    v-model="dateInputVal" 
-                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+    <!-- 1. 顶部导航 (日期控制) -->
+    <header class="px-5 pt-safe bg-surface sticky top-0 z-30 shadow-sm border-b border-gray-100">
+        <div class="py-4 flex items-center justify-between w-full">
+            <h1 class="text-2xl font-extrabold text-primary tracking-tight leading-none">经营总览</h1>
+            
+            <div class="flex items-center gap-2 relative">
+                <!-- 日期选择器按钮 -->
+                <button 
+                    @click="toggleDatePicker"
+                    class="bg-white px-3 py-2 rounded-full border border-gray-200 shadow-sm flex items-center gap-2 cursor-pointer active:bg-gray-50 transition-colors hover:border-primary min-h-[36px]"
                 >
-            </div>
+                    <i class="ph-bold ph-calendar-blank text-accent"></i>
+                    <span class="text-sm font-bold text-primary whitespace-nowrap select-none">{{ displayDate }}</span>
+                </button>
 
-            <!-- 回到今天 -->
-            <button 
-                v-if="!isToday"
-                @click="setToday"
-                class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform"
-            >
-                <i class="ph-bold ph-clock-counter-clockwise"></i>
-            </button>
+                <!-- 回到今天 -->
+                <button
+                    v-if="!isToday"
+                    @click="setToday"
+                    class="w-8 h-8 rounded-full bg-[#0A84FF] text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform flex-shrink-0"
+                    title="回到今天"
+                >
+                    <span class="text-sm font-bold">今</span>
+                </button>
+                
+                <!-- 自定义日历选择器 -->
+                <Transition name="fade">
+                    <div v-if="showDatePicker" class="absolute top-12 right-0 z-50">
+                        <!-- 遮罩层 -->
+                        <div @click="showDatePicker = false" class="fixed inset-0 -z-10"></div>
+                        
+                        <!-- 日历容器 -->
+                        <div class="bg-white rounded-2xl shadow-2xl border border-gray-100 p-4 w-80 animate-pop">
+                            <!-- 日期预览 -->
+                            <div class="bg-gradient-to-r from-primary to-accent text-white rounded-xl p-3 mb-3">
+                                <div class="text-xs opacity-80 mb-1">已选日期</div>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-2xl font-bold">{{ new Date(selectedDate).getDate() }}</span>
+                                    <span class="text-sm">{{ new Date(selectedDate).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' }) }}</span>
+                                </div>
+                                <div class="text-xs mt-1 opacity-90">{{ displayWeekday }}</div>
+                            </div>
+                            
+                            <!-- 月份导航 -->
+                            <div class="flex items-center justify-between mb-3">
+                                <button @click="prevMonth" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">
+                                    <i class="ph-bold ph-caret-left text-primary"></i>
+                                </button>
+                                <span class="text-sm font-bold text-primary">{{ currentMonthYear }}</span>
+                                <button @click="nextMonth" class="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors">
+                                    <i class="ph-bold ph-caret-right text-primary"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- 星期标题 -->
+                            <div class="grid grid-cols-7 gap-1 mb-2">
+                                <div v-for="day in ['日', '一', '二', '三', '四', '五', '六']" :key="day" class="text-center text-xs font-bold text-gray-400 py-1">
+                                    {{ day }}
+                                </div>
+                            </div>
+                            
+                            <!-- 日期网格 -->
+                            <div class="grid grid-cols-7 gap-1">
+                                <button
+                                    v-for="(day, index) in calendarDays"
+                                    :key="index"
+                                    @click="selectDate(day)"
+                                    class="aspect-square rounded-lg text-sm flex items-center justify-center transition-all relative"
+                                    :class="[
+                                        day.isCurrentMonth ? 'text-primary hover:bg-gray-50' : 'text-gray-300',
+                                        isSelectedDate(day) ? 'bg-primary text-white hover:bg-primary font-bold shadow-md scale-105' : '',
+                                        isTodayDate(day) && !isSelectedDate(day) ? 'border-2 border-accent font-bold' : ''
+                                    ]"
+                                >
+                                    {{ day.date }}
+                                    <span v-if="isTodayDate(day) && !isSelectedDate(day)" class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-accent rounded-full"></span>
+                                </button>
+                            </div>
+                            
+                            <!-- 快捷操作 -->
+                            <div class="mt-3 pt-3 border-t border-gray-100 flex gap-2">
+                                <button 
+                                    @click="setToday" 
+                                    class="flex-1 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 text-xs font-bold text-primary transition-colors"
+                                >
+                                    回到今天
+                                </button>
+                                <button 
+                                    @click="showDatePicker = false" 
+                                    class="flex-1 py-2 rounded-lg bg-[#0A84FF] text-white text-xs font-bold hover:bg-opacity-90 transition-colors"
+                                >
+                                    确定
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Transition>
+            </div>
         </div>
     </header>
 
     <div class="flex-1 overflow-y-auto p-5 pb-32 space-y-5 hide-scrollbar">
       
       <!-- 2. 核心财务卡片 -->
-      <div class="bg-primary rounded-[28px] p-6 text-white shadow-xl shadow-primary/20 relative overflow-hidden group">
-        <div class="absolute right-0 top-0 w-48 h-48 bg-accent/20 rounded-full blur-[60px] group-hover:bg-accent/30 transition-all duration-700"></div>
+      <div class="bg-gradient-to-r from-primary to-accent rounded-[28px] p-6 text-white shadow-xl shadow-primary/20 relative overflow-hidden group">
+        <div class="absolute right-0 top-0 w-48 h-48 bg-white/10 rounded-full blur-[60px] group-hover:bg-white/20 transition-all duration-700"></div>
         <div class="relative z-10">
           <div class="flex justify-between items-start mb-2">
-            <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">净利润 (Profit)</span>
+            <span class="text-xs font-bold text-white/60 uppercase tracking-widest">净利润 (Profit)</span>
           </div>
           <div class="text-[46px] font-bold tracking-tight mb-6 leading-none font-mono">
-            <span class="text-2xl text-gray-500 font-sans mr-1">¥</span>{{ formatCurrency(dailyStats.profit) }}
+            <span class="text-2xl text-white/70 font-sans mr-1">¥</span>{{ formatCurrency(dailyStats.profit) }}
           </div>
           <div class="grid grid-cols-3 gap-2 border-t border-white/10 pt-4">
             <div>
-              <div class="text-[10px] text-gray-500 mb-0.5">营收</div>
+              <div class="text-[10px] text-white/60 mb-0.5">营收</div>
               <div class="text-base font-bold">¥{{ formatCurrency(dailyStats.revenue) }}</div>
             </div>
             <div class="border-l border-white/10 pl-3">
-              <div class="text-[10px] text-gray-500 mb-0.5">订单</div>
+              <div class="text-[10px] text-white/60 mb-0.5">订单</div>
               <div class="text-base font-bold">{{ dailyStats.count }}</div>
             </div>
             <div class="border-l border-white/10 pl-3">
-              <div class="text-[10px] text-gray-500 mb-0.5">利润率</div>
-              <div class="text-base font-bold text-success">{{ dailyStats.marginRate }}%</div>
+              <div class="text-[10px] text-white/60 mb-0.5">利润率</div>
+              <div class="text-base font-bold text-white">{{ dailyStats.marginRate }}%</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 3. 趋势图表 (真实渲染) -->
+      <!-- 3. 趋势图表 (重构版) -->
       <div class="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100">
-        <div class="flex justify-between mb-6 items-center">
-          <h3 class="font-bold text-primary text-sm flex items-center gap-1">
-            <i class="ph-bold ph-chart-bar text-accent"></i> 利润趋势
-          </h3>
-          <span class="text-[10px] text-gray-400">近7天</span>
-        </div>
-        <div class="h-28 flex items-end justify-between gap-3">
-          <div v-for="(point, i) in chartData.labels" :key="i" class="flex-1 flex flex-col items-center gap-2 group cursor-default">
-            <!-- 柱状条 -->
-            <div class="w-full bg-gray-50 rounded-t-md relative overflow-hidden h-full flex items-end">
-               <div 
-                  class="w-full rounded-t-md transition-all duration-500 min-h-[4px]"
-                  :class="point.active ? 'bg-primary' : 'bg-accent/60 group-hover:bg-accent'"
-                  :style="{height: (chartData.values[i] / chartData.max) * 100 + '%'}"
-               ></div>
+        <!-- 标题与概览 -->
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="font-bold text-primary text-sm flex items-center gap-1 mb-2">
+              <i class="ph-bold ph-chart-line text-accent"></i> 销售额趋势
+            </h3>
+            <div class="flex items-baseline gap-2">
+              <span class="text-2xl font-bold text-primary">￥{{ formatCurrency(trendStats.total) }}</span>
+              <div class="flex items-center gap-1" :class="{
+                'text-success': trendStats.trend === 'up',
+                'text-danger': trendStats.trend === 'down',
+                'text-gray-400': trendStats.trend === 'stable'
+              }">
+                <i v-if="trendStats.trend === 'up'" class="ph-bold ph-trend-up text-lg"></i>
+                <i v-else-if="trendStats.trend === 'down'" class="ph-bold ph-trend-down text-lg"></i>
+                <i v-else class="ph-bold ph-minus text-lg"></i>
+                <span class="text-xs font-bold">{{ Math.abs(trendStats.trendPercent) }}%</span>
+              </div>
             </div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] text-gray-400 mb-1">近7天总计</div>
+            <div class="text-xs text-gray-500">均值 ￥{{ formatCurrency(trendStats.avg) }}</div>
+          </div>
+        </div>
+
+        <!-- 数据详情提示 -->
+        <Transition name="fade" mode="out-in">
+          <div v-if="selectedBarIndex !== null" class="mb-4 bg-gradient-to-r from-primary/5 to-accent/5 rounded-xl p-3 border border-primary/10">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <i class="ph-bold ph-calendar text-primary text-sm"></i>
+                </div>
+                <div>
+                  <div class="text-[10px] text-gray-500">日期</div>
+                  <div class="text-xs font-bold text-primary">{{ getBarDateLabel(selectedBarIndex) }}</div>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-[10px] text-gray-500 mb-0.5">当日销售额</div>
+                <div class="text-lg font-bold text-primary">¥{{ formatCurrency(chartData.revenueValues[selectedBarIndex]) }}</div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="mb-4 text-center text-xs text-gray-400 py-2">
+            <i class="ph-duotone ph-hand-tap text-lg opacity-50"></i>
+            <p>点击柱子查看详情</p>
+          </div>
+        </Transition>
+        
+        <!-- 柱状图 -->
+        <div class="h-64 flex items-end justify-between gap-1.5 relative">
+          <!-- Y轴参考线 -->
+          <div class="absolute inset-0 flex flex-col justify-between pointer-events-none">
+            <div class="border-t border-dashed border-gray-200"></div>
+            <div class="border-t border-dashed border-gray-200"></div>
+            <div class="border-t border-dashed border-gray-200"></div>
+          </div>
+
+          <!-- 柱子 -->
+          <div 
+            v-for="(point, i) in chartData.labels" 
+            :key="i" 
+            @click="toggleBar(i)"
+            class="flex-1 flex flex-col items-center gap-2 group cursor-pointer relative z-10 min-w-[44px] active:opacity-70 transition-opacity"
+          >
+            <!-- 柱状条容器 -->
+            <div class="w-full bg-gray-50 rounded-t-xl relative overflow-hidden h-52 flex items-end">
+              <!-- 背景渐变 -->
+              <div 
+                class="absolute inset-0 bg-gradient-to-t from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              ></div>
+              
+              <!-- 柱子 -->
+              <div 
+                class="w-full rounded-t-xl transition-all duration-500 min-h-[20px] relative overflow-hidden"
+                :class="[
+                  point.active ? 'bg-gradient-to-t from-primary to-accent shadow-lg' : 'bg-gradient-to-t from-primary/60 to-accent/60',
+                  selectedBarIndex === i ? 'shadow-xl ring-2 ring-primary/30' : ''
+                ]"
+                :style="{height: (chartData.revenueValues[i] / chartData.max) * 100 >= 25 ? (chartData.revenueValues[i] / chartData.max) * 75 + 25 + '%' : (chartData.revenueValues[i] / chartData.max) * 100 + '%'}"
+              >
+                <!-- 顶部高亮 -->
+                <div class="absolute top-0 inset-x-0 h-1 bg-white/30"></div>
+                
+                <!-- 数值标签 -->
+                <Transition name="fade">
+                  <div 
+                    v-if="selectedBarIndex === i" 
+                    class="absolute -top-9 left-1/2 -translate-x-1/2 bg-[#0A84FF] text-white px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap shadow-lg"
+                  >
+                    ￥{{ formatCurrency(chartData.revenueValues[i]) }}
+                    <div class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-[#0A84FF]"></div>
+                  </div>
+                </Transition>
+              </div>
+            </div>
+            
             <!-- 日期标签 -->
-            <span class="text-[10px] font-bold" :class="point.active ? 'text-primary scale-110' : 'text-gray-300'">{{ point.label }}</span>
+            <div class="flex flex-col items-center gap-0.5">
+              <span 
+                class="text-[10px] font-bold transition-all duration-300"
+                :class="[
+                  point.active ? 'text-primary scale-110' : 'text-gray-400',
+                  selectedBarIndex === i ? 'text-accent scale-105' : ''
+                ]"
+              >
+                {{ point.label }}
+              </span>
+              <div 
+                v-if="point.active" 
+                class="w-1 h-1 rounded-full bg-[#0A84FF]"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部统计信息 -->
+        <div class="mt-4 pt-4 border-t border-gray-100 grid grid-cols-3 gap-3">
+          <div class="text-center">
+            <div class="text-[10px] text-gray-400 mb-1">最高</div>
+            <div class="text-sm font-bold text-success">￥{{ formatCurrency(trendStats.max) }}</div>
+          </div>
+          <div class="text-center border-l border-r border-gray-100">
+            <div class="text-[10px] text-gray-400 mb-1">平均</div>
+            <div class="text-sm font-bold text-primary">￥{{ formatCurrency(trendStats.avg) }}</div>
+          </div>
+          <div class="text-center">
+            <div class="text-[10px] text-gray-400 mb-1">最低</div>
+            <div class="text-sm font-bold text-gray-400">￥{{ formatCurrency(trendStats.min) }}</div>
           </div>
         </div>
       </div>
@@ -244,7 +547,7 @@ const handleEditNote = () => {
                 </div>
                 <div class="text-right">
                   <div class="text-xs text-gray-400 mb-1">时间</div>
-                  <div class="font-mono text-sm font-bold text-gray-600">{{ new Date(currentOrder.timestamp).toLocaleString() }}</div>
+                  <div class="text-sm font-bold text-gray-600">{{ new Date(currentOrder.timestamp).toLocaleString() }}</div>
                 </div>
               </div>
 

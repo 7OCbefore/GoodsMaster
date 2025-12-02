@@ -13,6 +13,13 @@ const isHistoryOpen = ref(false);
 const cart = ref([]);
 const customerName = ref('');
 
+// 筛选按钮配置
+const categories = [
+  { key: 'all', label: '全部', icon: 'ph-squares-four' },
+  { key: 'hot', label: '热销', icon: 'ph-fire' },
+  { key: 'low', label: '低库存', icon: 'ph-warning' }
+];
+
 // --- 计算逻辑 ---
 const availableItems = computed(() => inventoryList.value.filter(i => i.quantity > 0));
 
@@ -107,6 +114,23 @@ function openGlobalPriceEdit(item) {
     });
 }
 
+function editCartItemPrice(cartItem, index) {
+    showDialog({
+        title: `修改 "${cartItem.name}" 售价`,
+        content: `成本 ¥${formatCurrency(cartItem.costSnapshot)}`,
+        isInput: true,
+        inputValue: cartItem.sellPrice,
+        confirmText: '保存',
+        action: (val) => {
+            const p = parseFloat(val);
+            if (p > 0) {
+                cart.value[index].sellPrice = p;
+                showToast('售价已更新');
+            }
+        }
+    });
+}
+
 // --- 订单详情逻辑 (与 Dashboard 复用) ---
 const isDetailOpen = ref(false);
 const currentOrder = ref(null);
@@ -160,16 +184,22 @@ const handleEditNote = () => {
     <!-- Main Grid -->
     <div class="flex flex-1 overflow-hidden pb-[80px]">
       <!-- Left Sidebar -->
-      <div class="w-20 flex flex-col items-center py-4 gap-4 bg-surface border-r border-gray-100/50">
-        <button v-for="cat in ['all', 'hot', 'low']" :key="cat" @click="currentCategory=cat" :class="currentCategory===cat?'bg-primary text-white shadow-lg':'text-gray-400 bg-white'" class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95">
-          <i :class="cat==='all'?'ph-squares-four':(cat==='hot'?'ph-fire':'ph-warning')" class="ph-bold text-xl"></i>
-          <span class="text-[9px] font-bold capitalize">{{ cat }}</span>
+      <div class="w-20 flex flex-col items-center py-4 gap-4 bg-white border-r border-gray-100">
+        <button 
+          v-for="cat in categories" 
+          :key="cat.key" 
+          @click="currentCategory=cat.key" 
+          :class="currentCategory===cat.key ? 'bg-[#0A84FF] text-white shadow-lg' : 'text-gray-400 bg-gray-50'" 
+          class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95"
+        >
+          <i :class="cat.icon" class="ph-bold text-xl"></i>
+          <span class="text-[9px] font-bold">{{ cat.label }}</span>
         </button>
       </div>
 
       <!-- Right Grid -->
       <div class="flex-1 overflow-y-auto p-4 bg-white rounded-tl-[32px] shadow-inner hide-scrollbar">
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-3 gap-3">
           <div v-for="item in displayList" :key="item.name" class="bg-surface p-3 rounded-2xl relative transition-transform border border-transparent active:border-primary/10 group h-32 flex flex-col justify-between">
             <div class="absolute top-2 right-2 bg-white px-1.5 py-0.5 rounded text-[10px] font-bold text-gray-400 shadow-sm pointer-events-none">{{ item.quantity }}</div>
             <div @click="addToCart(item)" class="flex-1 cursor-pointer">
@@ -183,7 +213,7 @@ const handleEditNote = () => {
                     <span v-else class="text-orange-500 text-xs">未定价</span>
                 </div>
               </div>
-              <div @click="addToCart(item)" class="w-7 h-7 bg-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-primary/20 active:scale-90 transition-transform cursor-pointer">
+              <div @click="addToCart(item)" class="w-7 h-7 bg-[#0A84FF] text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 active:scale-90 transition-transform cursor-pointer">
                 <i class="ph-bold ph-plus"></i>
               </div>
             </div>
@@ -198,12 +228,12 @@ const handleEditNote = () => {
 
     <!-- Cart Bar -->
     <div v-if="cartCount > 0" class="fixed bottom-[90px] left-4 right-4 z-30 animate-pop">
-      <div class="bg-primary text-white rounded-[24px] p-2 pl-5 pr-2 shadow-2xl shadow-primary/40 flex items-center justify-between border border-white/10 backdrop-blur-md">
+      <div class="bg-[#0A84FF] text-white rounded-[24px] p-2 pl-5 pr-2 shadow-2xl shadow-blue-500/40 flex items-center justify-between border border-white/10 backdrop-blur-md">
         <div @click="isCartOpen = true" class="flex flex-col cursor-pointer">
           <span class="text-[10px] text-white/60 font-bold uppercase tracking-wider">共 {{ cartCount }} 件</span>
-          <span class="text-xl font-mono font-bold">¥{{ formatCurrency(cartTotal) }}</span>
+          <span class="text-xl font-bold">¥{{ formatCurrency(cartTotal) }}</span>
         </div>
-        <button @click="isCartOpen = true" class="bg-white text-primary px-6 py-3 rounded-[20px] font-bold text-sm active:scale-95 transition-transform flex items-center gap-1">
+        <button @click="isCartOpen = true" class="bg-white text-[#0A84FF] px-6 py-3 rounded-[20px] font-bold text-sm active:scale-95 transition-transform flex items-center gap-1">
           去结算 <i class="ph-bold ph-arrow-right"></i>
         </button>
       </div>
@@ -224,20 +254,23 @@ const handleEditNote = () => {
               <div class="flex-1 mr-3">
                 <div class="font-bold text-primary truncate">{{ item.name }}</div>
                 <div class="flex items-center gap-2 mt-1">
-                  <div class="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">¥{{ item.sellPrice }}</div>
+                  <div @click="editCartItemPrice(item, i)" class="text-xs font-bold bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1">
+                    ¥{{ item.sellPrice }}
+                    <i class="ph-bold ph-pencil-simple text-[8px]"></i>
+                  </div>
                   <span class="text-[10px] text-gray-400">利润 ¥{{ ((item.sellPrice - item.costSnapshot)*item.quantity).toFixed(1) }}</span>
                 </div>
               </div>
               <div class="flex items-center gap-2 bg-surface rounded-xl p-1 shadow-inner">
                 <button @click="updateCartQty(i, -1)" class="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center text-primary font-bold">-</button>
                 <input type="tel" v-model="item.quantity" class="w-10 bg-transparent text-center font-bold text-sm outline-none p-0 appearance-none">
-                <button @click="updateCartQty(i, 1)" class="w-8 h-8 bg-primary text-white rounded-lg shadow-sm flex items-center justify-center font-bold">+</button>
+                <button @click="updateCartQty(i, 1)" class="w-8 h-8 bg-[#0A84FF] text-white rounded-lg shadow-sm flex items-center justify-center font-bold">+</button>
               </div>
             </div>
           </div>
           <div class="border-t border-gray-200 pt-4 shrink-0 space-y-4 pb-safe mb-2">
              <input v-model="customerName" placeholder="客户姓名 (选填)" class="w-full bg-white p-3.5 rounded-2xl font-bold outline-none text-sm text-center shadow-sm focus:ring-2 focus:ring-primary/10 transition-all">
-             <button @click="checkout" class="w-full bg-primary text-white font-bold text-lg py-4 rounded-[24px] shadow-xl active:scale-[0.98] transition-transform flex justify-center items-center gap-2">
+             <button @click="checkout" class="w-full bg-[#0A84FF] text-white font-bold text-lg py-4 rounded-[24px] shadow-xl active:scale-[0.98] transition-transform flex justify-center items-center gap-2">
                <i class="ph-bold ph-check-circle text-2xl"></i> 
                <span>收款 ¥{{ formatCurrency(cartTotal) }}</span>
              </button>
@@ -264,7 +297,7 @@ const handleEditNote = () => {
                 <div class="flex justify-between items-center">
                     <div>
                         <div class="font-bold text-lg text-primary">¥{{ formatCurrency(order.totalAmount) }}</div>
-                        <div class="text-[10px] text-gray-400">{{ new Date(order.timestamp).toLocaleString() }}</div>
+                        <div class="text-[10px] text-gray-500 font-medium">{{ new Date(order.timestamp).toLocaleString() }}</div>
                     </div>
                     <div class="text-right">
                         <div class="text-xs font-bold text-success">+¥{{ formatCurrency(order.totalProfit) }}</div>
@@ -291,7 +324,7 @@ const handleEditNote = () => {
               <div v-if="currentOrder.status === 'refunded'" class="absolute right-4 top-4 border-2 border-gray-300 text-gray-300 font-bold px-2 py-1 rounded rotate-12 text-sm">已退款</div>
               <div class="flex justify-between items-start mb-6">
                 <div><div class="text-xs text-gray-400 mb-1">客户</div><div class="font-bold text-primary text-lg">{{ currentOrder.customer || '散客' }}</div></div>
-                <div class="text-right"><div class="text-xs text-gray-400 mb-1">时间</div><div class="font-mono text-sm font-bold text-gray-600">{{ new Date(currentOrder.timestamp).toLocaleString() }}</div></div>
+                <div class="text-right"><div class="text-xs text-gray-400 mb-1">时间</div><div class="text-sm font-bold text-gray-600">{{ new Date(currentOrder.timestamp).toLocaleString() }}</div></div>
               </div>
               <div class="space-y-3 mb-6 border-t border-dashed border-gray-200 pt-4">
                 <div v-for="item in currentOrder.items" :key="item.name" class="flex justify-between items-center text-sm">
