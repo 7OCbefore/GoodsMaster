@@ -34,22 +34,22 @@ const displayWeekday = computed(() => {
 
 // 趋势图表数据处理
 const trendStats = computed(() => {
-  const totalRevenue = chartData.value.revenueValues.reduce((sum, val) => sum + val, 0);
-  const avgRevenue = totalRevenue / chartData.value.revenueValues.length;
-  const maxRevenue = Math.max(...chartData.value.revenueValues);
-  const minRevenue = Math.min(...chartData.value.revenueValues);
+  const totalProfit = chartData.value.values.reduce((sum, val) => sum + val, 0);
+  const avgProfit = totalProfit / chartData.value.values.length;
+  const maxProfit = Math.max(...chartData.value.values);
+  const minProfit = Math.min(...chartData.value.values);
   
   // 计算趋势（与前一天比较）
-  const today = chartData.value.revenueValues[chartData.value.revenueValues.length - 1];
-  const yesterday = chartData.value.revenueValues[chartData.value.revenueValues.length - 2];
+  const today = chartData.value.values[chartData.value.values.length - 1];
+  const yesterday = chartData.value.values[chartData.value.values.length - 2];
   const trend = today > yesterday ? 'up' : today < yesterday ? 'down' : 'stable';
   const trendPercent = yesterday > 0 ? (((today - yesterday) / yesterday) * 100).toFixed(1) : 0;
   
   return {
-    total: totalRevenue,
-    avg: avgRevenue,
-    max: maxRevenue,
-    min: minRevenue,
+    total: totalProfit,
+    avg: avgProfit,
+    max: maxProfit,
+    min: minProfit,
     trend,
     trendPercent
   };
@@ -331,7 +331,7 @@ const handleEditNote = () => {
         <div class="flex justify-between items-start mb-4">
           <div>
             <h3 class="font-bold text-primary text-sm flex items-center gap-1 mb-2">
-              <i class="ph-bold ph-chart-line text-accent"></i> 销售额趋势
+              <i class="ph-bold ph-chart-line text-accent"></i> 利润趋势
             </h3>
             <div class="flex items-baseline gap-2">
               <span class="text-2xl font-bold text-primary">￥{{ formatCurrency(trendStats.total) }}</span>
@@ -367,8 +367,8 @@ const handleEditNote = () => {
                 </div>
               </div>
               <div class="text-right">
-                <div class="text-[10px] text-gray-500 mb-0.5">当日销售额</div>
-                <div class="text-lg font-bold text-primary">¥{{ formatCurrency(chartData.revenueValues[selectedBarIndex]) }}</div>
+                <div class="text-[10px] text-gray-500 mb-0.5">当日利润</div>
+                <div class="text-lg font-bold text-primary">¥{{ formatCurrency(chartData.values[selectedBarIndex]) }}</div>
               </div>
             </div>
           </div>
@@ -379,7 +379,7 @@ const handleEditNote = () => {
         </Transition>
         
         <!-- 柱状图 -->
-        <div class="h-64 flex items-end justify-between gap-1.5 relative">
+        <div class="h-60 flex items-end gap-1.5 relative overflow-x-auto hide-scrollbar">
           <!-- Y轴参考线 -->
           <div class="absolute inset-0 flex flex-col justify-between pointer-events-none">
             <div class="border-t border-dashed border-gray-200"></div>
@@ -392,10 +392,10 @@ const handleEditNote = () => {
             v-for="(point, i) in chartData.labels" 
             :key="i" 
             @click="toggleBar(i)"
-            class="flex-1 flex flex-col items-center gap-2 group cursor-pointer relative z-10 min-w-[44px] active:opacity-70 transition-opacity"
+            class="flex-1 flex flex-col items-center gap-2 group cursor-pointer relative z-10 min-w-[40px] active:opacity-70 transition-opacity"
           >
             <!-- 柱状条容器 -->
-            <div class="w-full bg-gray-50 rounded-t-xl relative overflow-hidden h-52 flex items-end">
+            <div class="w-full bg-gray-50 rounded-t-xl relative overflow-hidden h-40 flex items-end">
               <!-- 背景渐变 -->
               <div 
                 class="absolute inset-0 bg-gradient-to-t from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
@@ -408,7 +408,7 @@ const handleEditNote = () => {
                   point.active ? 'bg-gradient-to-t from-primary to-accent shadow-lg' : 'bg-gradient-to-t from-primary/60 to-accent/60',
                   selectedBarIndex === i ? 'shadow-xl ring-2 ring-primary/30' : ''
                 ]"
-                :style="{height: (chartData.revenueValues[i] / chartData.max) * 100 >= 25 ? (chartData.revenueValues[i] / chartData.max) * 75 + 25 + '%' : (chartData.revenueValues[i] / chartData.max) * 100 + '%'}"
+                :style="{height: (chartData.values[i] / chartData.max) * 100 >= 25 ? (chartData.values[i] / chartData.max) * 75 + 25 + '%' : (chartData.values[i] / chartData.max) * 100 + '%'}"
               >
                 <!-- 顶部高亮 -->
                 <div class="absolute top-0 inset-x-0 h-1 bg-white/30"></div>
@@ -419,7 +419,7 @@ const handleEditNote = () => {
                     v-if="selectedBarIndex === i" 
                     class="absolute -top-9 left-1/2 -translate-x-1/2 bg-[#0A84FF] text-white px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap shadow-lg"
                   >
-                    ￥{{ formatCurrency(chartData.revenueValues[i]) }}
+                    ￥{{ formatCurrency(chartData.values[i]) }}
                     <div class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-[#0A84FF]"></div>
                   </div>
                 </Transition>

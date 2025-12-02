@@ -104,6 +104,70 @@ const addManualCode = () => {
   manualCode.value = '';
 };
 
+// 添加处理相册图片选择的方法
+const handleImageSelect = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  // 显示加载提示
+  showToast('正在识别条形码...', 'info');
+  
+  try {
+    // 检查浏览器是否支持 BarcodeDetector API
+    if (!window.BarcodeDetector) {
+      showToast('当前浏览器不支持条形码识别', 'warning');
+      return;
+    }
+
+    // 创建 BarcodeDetector 实例
+    const barcodeDetector = new BarcodeDetector();
+    
+    // 从文件创建图像对象
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    
+    img.onload = async () => {
+      try {
+        // 检测条形码
+        const barcodes = await barcodeDetector.detect(img);
+        
+        if (barcodes.length > 0) {
+          // 取第一个识别到的条形码
+          const code = barcodes[0].rawValue;
+          
+          // 检查是否已存在
+          if (batchList.value.includes(code)) {
+            showToast('单号已存在', 'warning');
+          } else {
+            batchList.value.push(code);
+            showToast(`识别成功: ${code}`, 'success');
+          }
+        } else {
+          // 没有识别到条形码，保持原行为
+          showToast('暂未集成OCR', 'warning');
+        }
+        
+        // 清理对象URL
+        URL.revokeObjectURL(objectUrl);
+      } catch (err) {
+        console.error('条形码识别错误:', err);
+        showToast('识别失败，请重试', 'error');
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      showToast('图片加载失败', 'error');
+    };
+    
+    img.src = objectUrl;
+  } catch (err) {
+    console.error('处理图片时发生错误:', err);
+    showToast('处理图片时发生错误', 'error');
+  }
+};
+
 // 生成直入模式单号
 const generateDirectCode = () => {
   return `DIRECT_${Date.now()}`;
@@ -195,7 +259,10 @@ const handleScanned = (code) => {
   
   if (target) {
     target.verified = true;
-    scanResult.value = { type: 'success', msg: `已核验: ${target.content}` };
+    scanResult.value = { 
+      type: 'success', 
+      msg: `${target.content} x${target.quantity} (${target.tracking}) 已入库` 
+    };
     if (navigator.vibrate) navigator.vibrate(100);
     setTimeout(() => scanResult.value = null, 1500);
   } else {
@@ -303,7 +370,7 @@ const stopScan = () => {
              <div class="flex-1 bg-white h-28 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center text-accent active:bg-blue-50 transition-colors relative">
                <i class="ph-bold ph-camera text-3xl mb-1"></i>
                <span class="text-xs font-bold">相册识别</span>
-               <input type="file" accept="image/*" class="absolute inset-0 opacity-0" @change="(e) => {/* Add OCR Logic Later */ showToast('暂未集成OCR','warning')}">
+               <input type="file" accept="image/*" class="absolute inset-0 opacity-0" @change="handleImageSelect">
              </div>
              <div class="flex-1 bg-white h-28 rounded-2xl border border-gray-100 shadow-sm p-3 flex flex-col justify-between">
                <input v-model="manualCode" placeholder="输入后4位" class="text-center font-mono font-bold text-xl outline-none placeholder-gray-200 text-primary uppercase" maxlength="10">
