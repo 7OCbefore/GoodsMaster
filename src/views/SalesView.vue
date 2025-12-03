@@ -308,7 +308,8 @@ const handleEditNote = () => {
 
       <!-- Right Grid -->
       <div class="flex-1 overflow-y-auto p-4 bg-white rounded-tl-[32px] shadow-inner hide-scrollbar">
-        <div class="grid grid-cols-3 gap-3">
+        <!-- 修改点：将 grid-cols-3 改为 grid-cols-2 -->
+        <div class="grid grid-cols-2 gap-3">
           <div v-for="item in displayList" :key="item.name" class="bg-surface p-3 rounded-2xl relative transition-transform border border-transparent active:border-primary/10 group h-32 flex flex-col justify-between">
             <div class="absolute top-2 right-2 bg-white px-1.5 py-0.5 rounded text-[10px] font-bold text-gray-400 shadow-sm pointer-events-none">{{ item.quantity }}</div>
             <div @click="addToCart(item)" class="flex-1 cursor-pointer">

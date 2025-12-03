@@ -553,7 +553,7 @@ const handleExport = async () => {
             </div>
             <div class="text-right">
               <div class="text-xs font-bold text-success">+¥{{ formatCurrency(order.totalProfit) }}</div>
-              <div class="text-[10px] text-gray-300">{{ order.items.length }} 件商品</div>
+              <div class="text-[10px] text-gray-300">{{ order.items.length }} 种商品</div>
             </div>
           </div>
         </div>
