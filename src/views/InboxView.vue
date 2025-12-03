@@ -451,7 +451,7 @@ const stopScan = () => {
     <!-- Scan Overlay -->
     <Transition name="fade">
       <div v-if="isScanOpen" class="fixed inset-0 z-[60] bg-black flex flex-col">
-        <div class="pt-safe px-4 py-4 flex justify-between items-center z-10">
+        <div class="px-4 py-4 flex justify-between items-center z-10 min-h-[48px] flex-shrink-0">
           <div class="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white text-xs font-bold border border-white/10">待收: {{pendingCount}}</div>
           <button @click="stopScan" class="w-10 h-10 bg-white/20 backdrop-blur rounded-full flex items-center justify-center text-white"><i class="ph-bold ph-x text-xl"></i></button>
         </div>
