@@ -450,7 +450,9 @@ const stopScan = () => {
 
     <!-- Scan Overlay -->
     <Transition name="fade">
-      <div v-if="isScanOpen" class="fixed inset-0 z-[60] bg-black flex flex-col">
+      <!-- 修正点1：将 pt-safe 移到父级容器，让背景铺满，内容下移 -->
+      <div v-if="isScanOpen" class="fixed inset-0 z-[60] bg-black flex flex-col pt-safe">
+        <!-- 修正点2：移除 padding-top 相关的冲突，仅保留 py-4 -->
         <div class="px-4 py-4 flex justify-between items-center z-10 min-h-[48px] flex-shrink-0">
           <div class="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white text-xs font-bold border border-white/10">待收: {{pendingCount}}</div>
           <button @click="stopScan" class="w-10 h-10 bg-white/20 backdrop-blur rounded-full flex items-center justify-center text-white"><i class="ph-bold ph-x text-xl"></i></button>
