@@ -2,7 +2,16 @@
 import { ref, computed, inject } from 'vue';
 import { useStore } from '../composables/useStore';
 
-const { inventoryList, sellPrice, formatCurrency, salesHistory, refundOrder, updateOrderNote } = useStore();
+const { 
+  inventoryList, 
+  sellPrice, 
+  formatCurrency, 
+  salesHistory, 
+  refundOrder, 
+  updateOrderNote,
+  packages // 需要访问packages来添加临时库存
+} = useStore();
+
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
 
@@ -43,18 +52,25 @@ const displayList = computed(() => {
 const cartTotal = computed(() => cart.value.reduce((s, i) => s + (i.sellPrice * i.quantity), 0));
 const cartCount = computed(() => cart.value.reduce((s, i) => s + i.quantity, 0));
 
+// 计算超卖商品数量
+const driftItemsCount = computed(() => {
+  return cart.value.filter(i => i.quantity > i.maxStock).length;
+});
+
 // --- 销售操作 ---
 function addToCart(item) {
   const existing = cart.value.find(c => c.name === item.name);
   if (existing) {
-    if (existing.quantity >= item.quantity) return showToast('库存不足', 'warning');
     existing.quantity++;
+    // 更新最大库存值
+    existing.maxStock = item.quantity;
   } else {
     let price = sellPrice.value[item.name];
     if (!price) {
         price = Math.ceil(item.averageCost * 1.1);
         showToast(`未定价，按成本1.1倍预填`, 'warning');
     }
+    
     cart.value.push({
       name: item.name,
       quantity: 1,
@@ -70,16 +86,109 @@ function updateCartQty(idx, delta) {
   const item = cart.value[idx];
   const newQty = parseInt(item.quantity) + delta;
   if (newQty <= 0) cart.value.splice(idx, 1);
-  else if (newQty > item.maxStock) {
-      item.quantity = item.maxStock;
-      showToast(`库存仅剩 ${item.maxStock} 件`, 'warning');
-  } else {
+  else {
       item.quantity = newQty;
   }
 }
 
-function checkout() {
+// 添加一个新的函数来处理手动输入数量的情况
+function handleQuantityChange(idx) {
+  const item = cart.value[idx];
+  const newQty = parseInt(item.quantity);
+  
+  // 如果输入的不是一个有效数字，重置为1
+  if (isNaN(newQty) || newQty <= 0) {
+    item.quantity = 1;
+    return;
+  }
+}
+
+// 执行JIT库存修正
+async function performJITCorrection(item, requiredQuantity) {
+  // 查找最近一次进货记录获取成本价
+  const lastPurchase = packages.value
+    .filter(p => p.content === item.name && p.verified)
+    .sort((a, b) => b.timestamp - a.timestamp)[0];
+  
+  const costPrice = lastPurchase ? lastPurchase.costPrice : item.averageCost;
+  
+  // 计算需要补充的库存数量（只需要补充差额）
+  const shortage = requiredQuantity - item.quantity;
+  
+  // 创建一个临时的进货记录
+  const tempPackage = {
+    id: Math.random() + Date.now(),
+    batchId: `jit_${Date.now()}`,
+    tracking: `JIT_ADJUST_${Date.now()}`,
+    content: item.name,
+    quantity: shortage, // 只补充差额数量
+    costPrice: costPrice,
+    note: 'JIT库存修正',
+    verified: true, // 直接标记为已入库
+    timestamp: Date.now()
+  };
+  
+  packages.value.unshift(tempPackage);
+  
+  // 返回Promise以便调用者知道操作完成
+  return new Promise(resolve => {
+    // 短暂延迟后resolve（等待inventoryList更新）
+    setTimeout(() => {
+      const updatedItem = inventoryList.value.find(i => i.name === item.name);
+      if (updatedItem) {
+        resolve({ success: true, updatedItem });
+      } else {
+        resolve({ success: false });
+      }
+    }, 100);
+  });
+}
+
+// 修改checkout函数，添加库存漂移检查和处理
+async function checkout() {
   if (cart.value.length === 0) return;
+  
+  // 检查是否有超卖商品
+  const driftItems = cart.value.filter(i => i.quantity > i.maxStock);
+  
+  // 如果有超卖商品，显示汇总修正弹窗
+  if (driftItems.length > 0) {
+    // 构建详细信息（使用纯文本格式，避免HTML标签）
+    let content = '检测到以下商品库存不足，将执行自动修正并入库：\n\n';
+    driftItems.forEach(item => {
+      const shortage = item.quantity - item.maxStock;
+      content += `• ${item.name}：需 ${item.quantity}，存 ${item.maxStock}（补 +${shortage}）\n`;
+    });
+    
+    showDialog({
+      title: '库存自动修正',
+      content,
+      confirmText: '一键修正并开单',
+      cancelText: '取消',
+      action: async () => {
+        // 用户确认后，执行所有修正
+        for (const item of driftItems) {
+          const cartItem = cart.value.find(i => i.name === item.name);
+          if (cartItem) {
+            const inventoryItem = inventoryList.value.find(i => i.name === item.name);
+            if (inventoryItem) {
+              await performJITCorrection(inventoryItem, cartItem.quantity);
+            }
+          }
+        }
+        
+        // 所有修正完成后执行开单
+        completeCheckout();
+      }
+    });
+  } else {
+    // 没有超卖商品，直接开单
+    completeCheckout();
+  }
+}
+
+// 实际执行开单操作
+function completeCheckout() {
   const order = {
     id: Date.now(),
     timestamp: Date.now(),
@@ -249,8 +358,18 @@ const handleEditNote = () => {
             <h2 class="text-2xl font-bold text-primary">购物车</h2>
             <button @click="cart=[]" class="text-danger text-sm font-bold bg-danger/10 px-3 py-1 rounded-full"><i class="ph-bold ph-trash"></i> 清空</button>
           </div>
+          
+          <!-- 购物车顶部状态栏 -->
+          <div v-if="driftItemsCount > 0" class="mb-4 p-3 rounded-xl bg-orange-50 flex items-center">
+            <i class="ph-fill ph-warning text-orange-500 text-lg mr-2"></i>
+            <div class="text-orange-800 text-sm font-bold">
+              {{ driftItemsCount }} 款商品超出库存，将于结算时自动修正
+            </div>
+          </div>
+          
           <div class="flex-1 overflow-y-auto space-y-3 mb-6 pr-1 hide-scrollbar">
-            <div v-for="(item, i) in cart" :key="i" class="bg-white p-3 rounded-2xl flex justify-between items-center shadow-sm">
+            <div v-for="(item, i) in cart" :key="i" class="bg-white p-3 rounded-2xl flex justify-between items-center shadow-sm"
+                 :class="{ 'border border-danger border-2': item.quantity > item.maxStock }">
               <div class="flex-1 mr-3">
                 <div class="font-bold text-primary truncate">{{ item.name }}</div>
                 <div class="flex items-center gap-2 mt-1">
@@ -263,7 +382,12 @@ const handleEditNote = () => {
               </div>
               <div class="flex items-center gap-2 bg-surface rounded-xl p-1 shadow-inner">
                 <button @click="updateCartQty(i, -1)" class="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center text-primary font-bold">-</button>
-                <input type="tel" v-model="item.quantity" class="w-10 bg-transparent text-center font-bold text-sm outline-none p-0 appearance-none">
+                <input 
+                  type="tel" 
+                  v-model="item.quantity" 
+                  @blur="handleQuantityChange(i)"
+                  class="w-10 bg-transparent text-center font-bold text-sm outline-none p-0 appearance-none"
+                  :class="{ 'text-danger font-extrabold': item.quantity > item.maxStock }">
                 <button @click="updateCartQty(i, 1)" class="w-8 h-8 bg-[#0A84FF] text-white rounded-lg shadow-sm flex items-center justify-center font-bold">+</button>
               </div>
             </div>
