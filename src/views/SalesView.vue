@@ -237,9 +237,9 @@ function exportCartToText() {
     const price = formatCurrency(item.sellPrice);
     const subtotal = formatCurrency(item.sellPrice * item.quantity);
     
-    // 使用"单价 乘以 数量 = 小计"的表述方式
+    // 使用"单价 × 数量 = 小计"的表述方式
     text += `${index + 1}. ${name}\n`;
-    text += `   ¥${price} 乘以 ${quantity} = ¥${subtotal}\n\n`;
+    text += `   ¥${price} × ${quantity} = ¥${subtotal}\n\n`;
   });
 
   // 总计
