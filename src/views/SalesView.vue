@@ -223,26 +223,23 @@ function exportCartToText() {
     return;
   }
 
-  const now = new Date();
-  const dateStr = now.toLocaleDateString();
-  const timeStr = now.toLocaleTimeString();
-
-  let text = '【货物清单】\n';
+  let text = '';
+  
+  // 添加客户姓名（如果有的话）
   if (customerName.value) {
-    text += `${customerName.value}\n`;
+    text += `${customerName.value}\n\n`;
   }
-  text += `时间：${dateStr} ${timeStr}\n\n`;
 
-  // 商品列表 - 使用自然语言描述，不使用表格分隔符
+  // 商品列表 - 使用新的格式
   cart.value.forEach((item, index) => {
     const name = item.name;
     const quantity = item.quantity;
     const price = formatCurrency(item.sellPrice);
     const subtotal = formatCurrency(item.sellPrice * item.quantity);
     
-    // 使用自然语言格式，不使用表格符号
+    // 使用"单价 乘以 数量 = 小计"的表述方式
     text += `${index + 1}. ${name}\n`;
-    text += `   数量：${quantity}  单价：¥${price}  小计：¥${subtotal}\n\n`;
+    text += `   ¥${price} 乘以 ${quantity} = ¥${subtotal}\n\n`;
   });
 
   // 总计
