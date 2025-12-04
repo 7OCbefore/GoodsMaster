@@ -206,6 +206,53 @@ function completeCheckout() {
   isCartOpen.value = false;
 }
 
+// 复制文本到剪贴板
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('货物清单已复制到剪贴板', 'success');
+  }).catch(err => {
+    console.error('复制失败:', err);
+    showToast('复制失败，请手动复制', 'error');
+  });
+}
+
+// 复制购物车为纯文本（隐藏利润信息）
+function exportCartToText() {
+  if (cart.value.length === 0) {
+    showToast('购物车为空，无法复制', 'warning');
+    return;
+  }
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString();
+  const timeStr = now.toLocaleTimeString();
+
+  let text = '货物清单\n';
+  if (customerName.value) {
+    text += `客户：${customerName.value}\n`;
+  }
+  text += `时间：${dateStr} ${timeStr}\n\n`;
+
+  // 表头
+  text += '商品名称          数量    单价    小计\n';
+  text += '------------------------------------\n';
+
+  // 商品列表
+  cart.value.forEach(item => {
+    const name = item.name.padEnd(14, ' ');
+    const quantity = item.quantity.toString().padStart(4, ' ');
+    const price = `¥${formatCurrency(item.sellPrice)}`.padStart(8, ' ');
+    const subtotal = `¥${formatCurrency(item.sellPrice * item.quantity)}`.padStart(8, ' ');
+    text += `${name} ${quantity} ${price} ${subtotal}\n`;
+  });
+
+  text += '------------------------------------\n';
+  text += `总计：¥${formatCurrency(cartTotal.value)}\n`;
+
+  // 复制到剪贴板
+  copyToClipboard(text);
+}
+
 function openGlobalPriceEdit(item) {
     showDialog({
         title: `设置 "${item.name}" 售价`,
@@ -395,8 +442,15 @@ const handleEditNote = () => {
           </div>
           <div class="border-t border-gray-200 pt-4 shrink-0 space-y-4 pb-safe mb-2">
              <input v-model="customerName" placeholder="客户姓名 (选填)" class="w-full bg-white p-3.5 rounded-2xl font-bold outline-none text-sm text-center shadow-sm focus:ring-2 focus:ring-primary/10 transition-all">
+
+             <!-- 导出/复制按钮 -->
+             <button @click="exportCartToText" class="w-full bg-gray-100 text-primary font-bold text-lg py-4 rounded-[24px] shadow-sm active:scale-[0.98] transition-transform flex justify-center items-center gap-2">
+               <i class="ph-bold ph-clipboard-text text-2xl"></i>
+               <span>复制货物清单</span>
+             </button>
+
              <button @click="checkout" class="w-full bg-[#0A84FF] text-white font-bold text-lg py-4 rounded-[24px] shadow-xl active:scale-[0.98] transition-transform flex justify-center items-center gap-2">
-               <i class="ph-bold ph-check-circle text-2xl"></i> 
+               <i class="ph-bold ph-check-circle text-2xl"></i>
                <span>开单 ¥{{ formatCurrency(cartTotal) }}</span>
              </button>
           </div>
