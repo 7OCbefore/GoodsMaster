@@ -233,21 +233,100 @@ function exportCartToText() {
   }
   text += `时间：${dateStr} ${timeStr}\n\n`;
 
-  // 表头
-  text += '商品名称          数量    单价    小计\n';
-  text += '------------------------------------\n';
+  // 使用全角字符确保在微信中显示稳定
+  const fullWidthSpace = '\u3000'; // 全角空格
+  const separator = '｜'; // 全角竖线分隔符 U+FF5C
+  const lineChar = '－'; // 全角减号 U+FF0D，用于分隔线
+
+  // 计算各列最大宽度（字符数）
+  let maxNameLen = 0;
+  let maxQtyLen = 0;
+  let maxPriceLen = 0;
+  let maxSubtotalLen = 0;
+
+  cart.value.forEach(item => {
+    const nameLen = item.name.length;
+    if (nameLen > maxNameLen) maxNameLen = Math.min(nameLen, 14); // 限制最大长度，避免过宽
+
+    const qtyStr = item.quantity.toString();
+    if (qtyStr.length > maxQtyLen) maxQtyLen = qtyStr.length;
+
+    const priceStr = `¥${formatCurrency(item.sellPrice)}`;
+    if (priceStr.length > maxPriceLen) maxPriceLen = priceStr.length;
+
+    const subtotalStr = `¥${formatCurrency(item.sellPrice * item.quantity)}`;
+    if (subtotalStr.length > maxSubtotalLen) maxSubtotalLen = subtotalStr.length;
+  });
+
+  // 表头文字长度（中文字符，每个算1个字符）
+  const headerNameLen = 4; // "商品名称"
+  const headerQtyLen = 2;  // "数量"
+  const headerPriceLen = 2; // "单价"
+  const headerSubtotalLen = 2; // "小计"
+
+  // 取表头和内容的最大长度，并确保最小宽度
+  maxNameLen = Math.max(maxNameLen, headerNameLen, 8);  // 至少8字符宽度
+  maxQtyLen = Math.max(maxQtyLen, headerQtyLen, 4);     // 至少4字符宽度
+  maxPriceLen = Math.max(maxPriceLen, headerPriceLen, 8); // 至少8字符宽度
+  maxSubtotalLen = Math.max(maxSubtotalLen, headerSubtotalLen, 8); // 至少8字符宽度
+
+  // 辅助函数：将内容填充到指定宽度，左对齐，用全角空格填充
+  const padLeft = (str, width) => {
+    const strLen = str.length;
+    if (strLen >= width) return str;
+    return str + fullWidthSpace.repeat(width - strLen);
+  };
+
+  // 辅助函数：将内容填充到指定宽度，右对齐，用全角空格填充
+  const padRight = (str, width) => {
+    const strLen = str.length;
+    if (strLen >= width) return str;
+    return fullWidthSpace.repeat(width - strLen) + str;
+  };
+
+  // 构建表头
+  const nameHeader = padLeft('商品名称', maxNameLen);
+  const qtyHeader = padLeft('数量', maxQtyLen);
+  const priceHeader = padLeft('单价', maxPriceLen);
+  const subtotalHeader = padLeft('小计', maxSubtotalLen);
+
+  text += nameHeader + separator + qtyHeader + separator + priceHeader + separator + subtotalHeader + '\n';
+
+  // 分隔线（全角减号）
+  const lineWidth = maxNameLen + maxQtyLen + maxPriceLen + maxSubtotalLen + 3; // 3个分隔符
+  text += lineChar.repeat(lineWidth) + '\n';
 
   // 商品列表
   cart.value.forEach(item => {
-    const name = item.name.padEnd(14, ' ');
-    const quantity = item.quantity.toString().padStart(4, ' ');
-    const price = `¥${formatCurrency(item.sellPrice)}`.padStart(8, ' ');
-    const subtotal = `¥${formatCurrency(item.sellPrice * item.quantity)}`.padStart(8, ' ');
-    text += `${name} ${quantity} ${price} ${subtotal}\n`;
+    // 商品名称：左对齐，如果过长则截断
+    const displayName = item.name.length > maxNameLen
+      ? item.name.substring(0, maxNameLen - 1) + '…'
+      : item.name;
+    const nameCol = padLeft(displayName, maxNameLen);
+
+    // 数量：右对齐（数字）
+    const qtyStr = item.quantity.toString();
+    const qtyCol = padRight(qtyStr, maxQtyLen);
+
+    // 单价：右对齐（货币）
+    const priceStr = `¥${formatCurrency(item.sellPrice)}`;
+    const priceCol = padRight(priceStr, maxPriceLen);
+
+    // 小计：右对齐（货币）
+    const subtotalStr = `¥${formatCurrency(item.sellPrice * item.quantity)}`;
+    const subtotalCol = padRight(subtotalStr, maxSubtotalLen);
+
+    text += nameCol + separator + qtyCol + separator + priceCol + separator + subtotalCol + '\n';
   });
 
-  text += '------------------------------------\n';
-  text += `总计：¥${formatCurrency(cartTotal.value)}\n`;
+  // 分隔线
+  text += lineChar.repeat(lineWidth) + '\n';
+
+  // 总计行（右对齐）
+  const totalLabel = '总计：';
+  const totalValue = `¥${formatCurrency(cartTotal.value)}`;
+  const totalCol = padRight(totalValue, maxNameLen + maxQtyLen + maxPriceLen + maxSubtotalLen + 3 - totalLabel.length);
+  text += totalLabel + totalCol + '\n';
 
   // 复制到剪贴板
   copyToClipboard(text);
