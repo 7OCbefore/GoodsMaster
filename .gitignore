@@ -3,11 +3,9 @@ node_modules/
 old-version/
 
 # Environment variables
+.env
 .env.local
 .env.*.local
-
-# Production build
-dist/
 
 # Documentation (通常包含本地开发文档)
 Documents/
