@@ -17,7 +17,7 @@ export default defineConfig(({ command }) => {
     // Core modification here:
     // If it's a production build, use '/repository-name/'
     // If it's local development, use '/'
-    base: isProduction ? '/goods-master/' : './',
+    base: isProduction ? '/GoodsMaster/' : './',
     
     // Build optimizations
     build: {
