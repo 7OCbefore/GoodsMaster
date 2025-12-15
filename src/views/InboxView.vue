@@ -1,9 +1,8 @@
 <script setup>
 import { ref, reactive, computed, inject, nextTick, watch } from 'vue';
-import { useStore } from '../composables/useSupabaseStore';
+import { useStore } from '../composables/useStore';
 
-const store = useStore();
-const { packages, goodsList, addNewPackage, verifyExistingPackage, deleteExistingPackage } = store;
+const { packages, goodsList } = useStore();
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
 
@@ -23,24 +22,17 @@ const filteredList = computed(() => {
 const pendingCount = computed(() => packages.value.filter(p => !p.verified).length);
 
 // --- 操作逻辑 ---
-const toggleVerify = async (pkg) => {
+const toggleVerify = (pkg) => {
   if (pkg.verified) {
     showDialog({
       title: '撤销入库',
       content: '确定要撤销这条记录的入库状态吗？',
       isDanger: true,
-      action: async () => { 
-        // For now, we'll just show a message since we need to implement the actual update
-        showToast('已撤销', 'warning'); 
-      }
+      action: () => { pkg.verified = false; showToast('已撤销', 'warning'); }
     });
   } else {
-    const result = await verifyExistingPackage(pkg.id);
-    if (result.error) {
-      showToast('入库失败: ' + result.error.message, 'error');
-    } else {
-      showToast('已入库');
-    }
+    pkg.verified = true;
+    showToast('已入库');
   }
 };
 
@@ -49,13 +41,10 @@ const deleteItem = (id) => {
     title: '删除记录',
     content: '此操作不可恢复，确定删除？',
     isDanger: true,
-    action: async () => {
-      const result = await deleteExistingPackage(id);
-      if (result.error) {
-        showToast('删除失败: ' + result.error.message, 'error');
-      } else {
-        showToast('已删除');
-      }
+    action: () => {
+      const idx = packages.value.findIndex(p => p.id === id);
+      if (idx > -1) packages.value.splice(idx, 1);
+      showToast('已删除');
     }
   });
 };
@@ -71,9 +60,31 @@ const editPrice = (pkg) => {
       const price = parseFloat(val);
       if (isNaN(price) || price < 0) return showToast('价格无效', 'warning');
       
-      // In a real implementation, we would update the package in Supabase
-      pkg.costPrice = price;
-      showToast('价格已更新');
+      // 检查是否有同批次同名商品
+      const siblings = packages.value.filter(p => 
+        p.batchId === pkg.batchId && 
+        p.content === pkg.content && 
+        p.id !== pkg.id
+      );
+
+      if (siblings.length > 0) {
+        // 延迟触发二次弹窗，避免冲突
+        setTimeout(() => {
+          showDialog({
+            title: '批量同步',
+            content: `检测到同批次还有 ${siblings.length} 个"${pkg.content}"，是否同步修改价格？`,
+            confirmText: '同步修改',
+            action: () => {
+              siblings.forEach(p => p.costPrice = price);
+              pkg.costPrice = price;
+              showToast(`已同步 ${siblings.length + 1} 条记录`);
+            }
+          });
+        }, 300);
+      } else {
+        pkg.costPrice = price;
+        showToast('价格已更新');
+      }
     }
   });
 };
@@ -203,7 +214,7 @@ watch(() => form.content, (val) => {
   if (last) form.costPrice = last.costPrice;
 });
 
-const confirmBatchAdd = async () => {
+const confirmBatchAdd = () => {
   if (!form.content) return showToast('请填写货名', 'warning');
   
   // 直入模式：如果没有单号则自动生成
@@ -214,10 +225,12 @@ const confirmBatchAdd = async () => {
   if (batchList.value.length === 0) return showToast('请添加至少一个单号', 'warning');
   
   const batchId = Date.now().toString();
+  if (!goodsList.value.includes(form.content)) goodsList.value.unshift(form.content);
 
-  // Add each package
-  for (const code of batchList.value) {
-    const packageData = {
+  batchList.value.forEach(code => {
+    packages.value.unshift({
+      id: Math.random() + Date.now(),
+      batchId,
       tracking: code,
       content: form.content,
       quantity: parseInt(form.quantity) || 1,
@@ -225,14 +238,8 @@ const confirmBatchAdd = async () => {
       note: form.note,
       verified: isDirectMode.value ? true : false, // 直入模式自动标记为已入库
       timestamp: Date.now()
-    };
-
-    const result = await addNewPackage(packageData);
-    if (result.error) {
-      showToast('录入失败: ' + result.error.message, 'error');
-      return;
-    }
-  }
+    });
+  });
   
   showToast(`成功录入 ${batchList.value.length} 条${isDirectMode.value ? '（已自动入库）' : ''}`);
   batchList.value = [];
@@ -278,7 +285,6 @@ const handleScanned = (code) => {
   const target = packages.value.find(p => !p.verified && (p.tracking === c || c.endsWith(p.tracking)));
   
   if (target) {
-    // In a real implementation, we would update the package in Supabase
     target.verified = true;
     scanResult.value = { 
       type: 'success', 

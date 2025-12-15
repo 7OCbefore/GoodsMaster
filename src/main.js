@@ -1,5 +1,4 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
 import './style.css'
 import App from './App.vue'
 
@@ -10,12 +9,4 @@ import App from './App.vue'
 // import '@phosphor-icons/web/css/fill.css'
 // import '@phosphor-icons/web/css/duotone.css'
 
-// Create router
-const router = createRouter({
-  history: createWebHistory(),
-  routes: [
-    // We'll define routes as needed
-  ]
-})
-
-createApp(App).use(router).mount('#app')
+createApp(App).mount('#app')

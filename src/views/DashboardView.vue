@@ -1,23 +1,9 @@
 <script setup>
-import { ref, computed, inject, onMounted } from 'vue';
-import { useStore } from '../composables/useSupabaseStore';
+import { ref, computed, inject } from 'vue';
+import { useStore } from '../composables/useStore';
 import { useExport } from '../composables/useExport';
 
-const store = useStore();
-const { 
-  selectedDate, 
-  dailyStats, 
-  chartData, 
-  lowStockItems, 
-  topSelling, 
-  formatCurrency, 
-  refundOrder, 
-  updateOrderNote, 
-  salesHistory, 
-  inventoryList,
-  user,
-  loadData
-} = store;
+const { selectedDate, dailyStats, chartData, lowStockItems, topSelling, formatCurrency, refundOrder, updateOrderNote, salesHistory, inventoryList } = useStore();
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
 const { exportToExcel } = useExport();
@@ -185,14 +171,10 @@ const handleRefund = () => {
     content: '退单后库存将自动恢复，且该笔金额从统计中扣除。',
     isDanger: true,
     confirmText: '确认退款',
-    action: async () => {
-      const result = await refundOrder(currentOrder.value.id);
-      if (result.error) {
-        showToast('退单失败: ' + result.error.message, 'error');
-      } else {
-        showToast('已退单');
-        isDetailOpen.value = false;
-      }
+    action: () => {
+      refundOrder(currentOrder.value.id);
+      showToast('已退单');
+      isDetailOpen.value = false;
     }
   });
 };

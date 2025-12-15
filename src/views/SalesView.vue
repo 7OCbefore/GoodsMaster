@@ -1,22 +1,16 @@
 <script setup>
-import { ref, computed, inject, onMounted } from 'vue';
-import { useStore } from '../composables/useSupabaseStore';
+import { ref, computed, inject } from 'vue';
+import { useStore } from '../composables/useStore';
 
-const store = useStore();
 const { 
   inventoryList, 
-  goodsList,
   sellPrice, 
   formatCurrency, 
   salesHistory, 
   refundOrder, 
   updateOrderNote,
-  packages, // 需要访问packages来添加临时库存
-  user,
-  loadData,
-  recordSale,
-  addGood: addGoodToStore // 重命名避免冲突
-} = store;
+  packages // 需要访问packages来添加临时库存
+} = useStore();
 
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
@@ -36,52 +30,13 @@ const categories = [
 ];
 
 // --- 计算逻辑 ---
-// 合并库存商品和商品目录，包含所有商品
-const allItems = computed(() => {
-  // 获取所有库存商品
-  const inventoryItems = inventoryList.value;
-  
-  // 获取所有商品目录中的商品
-  const goodsListItems = goodsList.value || [];
-  
-  // 创建一个Map来存储所有商品，优先使用库存信息
-  const allItemsMap = new Map();
-  
-  // 首先添加库存商品
-  inventoryItems.forEach(item => {
-    allItemsMap.set(item.name, {
-      ...item,
-      hasInventory: true, // 标记为有库存
-      inGoodsList: true   // 同时也在商品目录中
-    });
-  });
-  
-  // 然后添加仅在商品目录中但没有库存的商品
-  goodsListItems.forEach(good => {
-    if (!allItemsMap.has(good.name)) {
-      allItemsMap.set(good.name, {
-        name: good.name,
-        quantity: 0,
-        averageCost: 0,
-        hasInventory: false, // 标记为无库存
-        inGoodsList: true,   // 在商品目录中
-        category: good.category,
-        unit: good.unit
-      });
-    }
-  });
-  
-  // 转换为数组并返回
-  return Array.from(allItemsMap.values());
-});
+const availableItems = computed(() => inventoryList.value);
 
 const displayList = computed(() => {
-  let list = allItems.value;
-  
+  let list = availableItems.value;
   if (searchQuery.value) {
     list = list.filter(i => i.name.includes(searchQuery.value));
   }
-  
   if (currentCategory.value === 'hot') {
     const salesMap = {};
     salesHistory.value.forEach(s => {
@@ -91,22 +46,6 @@ const displayList = computed(() => {
   } else if (currentCategory.value === 'low') {
     list = list.filter(i => i.quantity < 5);
   }
-  
-  // 如果是搜索模式且没有匹配的现有商品，添加新商品选项
-  if (searchQuery.value && list.length === 0) {
-    const newProductOption = {
-      name: searchQuery.value,
-      quantity: 0,
-      averageCost: 0,
-      hasInventory: false, // 标记为无库存
-      inGoodsList: false,  // 不在商品目录中
-      isNew: true,         // 标记为新商品
-      category: '未分类',
-      unit: '个'
-    };
-    list = [newProductOption];
-  }
-  
   return list;
 });
 
@@ -129,18 +68,15 @@ function addToCart(item) {
     let price = sellPrice.value[item.name];
     if (!price) {
         price = Math.ceil(item.averageCost * 1.1);
-        // 如果是新商品且没有成本价，使用默认价格
-        if (item.isNew || item.averageCost === 0) {
-          showToast(`新商品，请设置售价`, 'warning');
-        }
+        showToast(`未定价，按成本1.1倍预填`, 'warning');
     }
     
     cart.value.push({
       name: item.name,
       quantity: 1,
       sellPrice: price,
-      costSnapshot: item.averageCost || 0, // 使用默认值0如果未定义
-      maxStock: item.quantity // 这是当前库存量，可以为0
+      costSnapshot: item.averageCost,
+      maxStock: item.quantity
     });
   }
   if (navigator.vibrate) navigator.vibrate(10);
@@ -170,16 +106,11 @@ function handleQuantityChange(idx) {
 // 执行JIT库存修正
 async function performJITCorrection(item, requiredQuantity) {
   // 查找最近一次进货记录获取成本价
-  let lastPurchase = null;
-  if (item.hasInventory) {
-    // 如果有库存记录，尝试从packages中查找
-    lastPurchase = packages.value
-      .filter(p => p.content === item.name && p.verified)
-      .sort((a, b) => b.timestamp - a.timestamp)[0];
-  }
+  const lastPurchase = packages.value
+    .filter(p => p.content === item.name && p.verified)
+    .sort((a, b) => b.timestamp - a.timestamp)[0];
   
-  // 如果没找到进货记录，尝试从商品目录获取或使用默认成本
-  const costPrice = lastPurchase ? lastPurchase.costPrice : (item.averageCost > 0 ? item.averageCost : 0);
+  const costPrice = lastPurchase ? lastPurchase.costPrice : item.averageCost;
   
   // 计算需要补充的库存数量（只需要补充差额）
   const shortage = requiredQuantity - item.quantity;
@@ -191,7 +122,7 @@ async function performJITCorrection(item, requiredQuantity) {
     tracking: `JIT_ADJUST_${Date.now()}`,
     content: item.name,
     quantity: shortage, // 只补充差额数量
-    costPrice: costPrice > 0 ? costPrice : 1, // 使用1作为默认成本价
+    costPrice: costPrice,
     note: 'JIT库存修正',
     verified: true, // 直接标记为已入库
     timestamp: Date.now()
@@ -210,44 +141,6 @@ async function performJITCorrection(item, requiredQuantity) {
         resolve({ success: false });
       }
     }, 100);
-  });
-}
-
-// 添加新商品到系统
-async function addNewProduct(item) {
-  // 确认是否要添加新商品
-  showDialog({
-    title: `添加新商品`,
-    content: `您确定要添加新商品 "${item.name}" 吗？`,
-    confirmText: '添加',
-    action: async () => {
-      try {
-        // 添加商品到商品目录
-        const result = await addGoodToStore({
-          name: item.name,
-          category: item.category || '未分类',
-          unit: item.unit || '个'
-        });
-        
-        if (result.error) {
-          throw new Error(result.error.message);
-        }
-        
-        showToast(`新商品 "${item.name}" 已添加`, 'success');
-        
-        // 将商品添加到购物车
-        addToCart({
-          name: item.name,
-          quantity: 0,
-          averageCost: 0,
-          hasInventory: false,
-          inGoodsList: true,
-          isNew: false  // 现在它不再是新商品了
-        });
-      } catch (error) {
-        showToast(`添加商品失败: ${error.message}`, 'error');
-      }
-    }
   });
 }
 
@@ -295,10 +188,10 @@ async function checkout() {
 }
 
 // 实际执行开单操作
-async function completeCheckout() {
+function completeCheckout() {
   const order = {
-    id: Date.now().toString(), // Convert to string for Supabase
-    timestamp: new Date().toISOString(),
+    id: Date.now(),
+    timestamp: Date.now(),
     customer: customerName.value,
     totalAmount: cartTotal.value,
     totalProfit: cart.value.reduce((s, i) => s + ((i.sellPrice - i.costSnapshot) * i.quantity), 0),
@@ -306,13 +199,7 @@ async function completeCheckout() {
     status: 'completed',
     note: ''
   };
-  
-  const result = await recordSale(order);
-  if (result.error) {
-    showToast('开单失败: ' + result.error.message, 'error');
-    return;
-  }
-  
+  salesHistory.value.unshift(order);
   showToast('开单成功', 'success');
   cart.value = [];
   customerName.value = '';
@@ -411,14 +298,10 @@ const handleRefund = () => {
         title: '确认退单',
         content: '库存将自动恢复。',
         isDanger: true,
-        action: async () => {
-            const result = await refundOrder(currentOrder.value.id);
-            if (result.error) {
-                showToast('退单失败: ' + result.error.message, 'error');
-            } else {
-                showToast('已退单');
-                isDetailOpen.value = false;
-            }
+        action: () => {
+            refundOrder(currentOrder.value.id);
+            showToast('已退单');
+            isDetailOpen.value = false;
         }
     });
 };
@@ -470,50 +353,20 @@ const handleEditNote = () => {
       <div class="flex-1 overflow-y-auto p-4 bg-white rounded-tl-[32px] shadow-inner hide-scrollbar">
         <!-- 修改点：将 grid-cols-3 改为 grid-cols-2 -->
         <div class="grid grid-cols-2 gap-3">
-          <div v-for="item in displayList" :key="item.name" 
-               :class="[
-                 'bg-surface p-3 rounded-2xl relative transition-transform border border-transparent active:border-primary/10 group h-32 flex flex-col justify-between',
-                 item.quantity === 0 ? 'opacity-60' : 'opacity-100',
-                 !item.hasInventory && item.inGoodsList ? 'bg-gray-50 border-dashed border-gray-300' : '',
-                 item.isNew ? 'bg-blue-50 border border-blue-200' : ''
-               ]">
-            <div class="absolute top-2 right-2" 
-                 :class="[
-                   'px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm pointer-events-none',
-                   item.quantity > 0 ? 'bg-white text-gray-400' : (item.isNew ? 'bg-blue-200 text-blue-700' : 'bg-gray-200 text-gray-500')
-                 ]">
-              {{ item.quantity }}
-            </div>
-            <div @click="item.isNew ? addNewProduct(item) : addToCart(item)" class="flex-1 cursor-pointer">
-                <div 
-                  :class="[
-                    'font-bold text-sm leading-tight line-clamp-2 mt-1',
-                    item.isNew ? 'text-blue-600' : (item.quantity === 0 ? 'text-gray-400' : 'text-primary')
-                  ]">
-                  {{ item.name }}
-                  <i v-if="!item.hasInventory && item.inGoodsList && !item.isNew" 
-                     class="ph-bold ph-bookmark-simple text-[10px] ml-1 text-gray-400" 
-                     title="来自商品目录"></i>
-                  <i v-if="item.isNew" 
-                     class="ph-bold ph-plus-circle text-[10px] ml-1 text-blue-500" 
-                     title="新商品"></i>
-                </div>
+          <div v-for="item in displayList" :key="item.name" class="bg-surface p-3 rounded-2xl relative transition-transform border border-transparent active:border-primary/10 group h-32 flex flex-col justify-between">
+            <div class="absolute top-2 right-2 bg-white px-1.5 py-0.5 rounded text-[10px] font-bold text-gray-400 shadow-sm pointer-events-none">{{ item.quantity }}</div>
+            <div @click="addToCart(item)" class="flex-1 cursor-pointer">
+                <div class="font-bold text-sm text-primary leading-tight line-clamp-2 mt-1">{{ item.name }}</div>
             </div>
             <div class="flex justify-between items-end">
-              <div @click.stop="!item.isNew && openGlobalPriceEdit(item)" class="group/price cursor-pointer px-1 -ml-1 rounded hover:bg-gray-200/50 transition-colors">
+              <div @click.stop="openGlobalPriceEdit(item)" class="group/price cursor-pointer px-1 -ml-1 rounded hover:bg-gray-200/50 transition-colors">
                 <div class="text-[10px] text-gray-400 flex items-center gap-1">售价 <i class="ph-bold ph-pencil-simple text-[8px] opacity-0 group-hover/price:opacity-100"></i></div>
-                <div class="text-sm font-extrabold" 
-                     :class="item.isNew ? 'text-blue-500' : (item.quantity === 0 ? 'text-gray-400' : 'text-primary')">
-                    <span v-if="sellPrice[item.name] && !item.isNew">¥{{ sellPrice[item.name] }}</span>
-                    <span v-else-if="!item.isNew" class="text-orange-500 text-xs">未定价</span>
-                    <span v-else class="text-blue-500 text-xs">新商品</span>
+                <div class="text-sm font-extrabold text-primary">
+                    <span v-if="sellPrice[item.name]">¥{{ sellPrice[item.name] }}</span>
+                    <span v-else class="text-orange-500 text-xs">未定价</span>
                 </div>
               </div>
-              <div @click="item.isNew ? addNewProduct(item) : addToCart(item)" 
-                   :class="[
-                     'w-7 h-7 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer',
-                     item.isNew ? 'bg-blue-500 text-white shadow-blue-500/30' : (item.quantity > 0 ? 'bg-[#0A84FF] text-white shadow-blue-500/30' : 'bg-gray-300 text-gray-500')
-                   ]">
+              <div @click="addToCart(item)" class="w-7 h-7 bg-[#0A84FF] text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 active:scale-90 transition-transform cursor-pointer">
                 <i class="ph-bold ph-plus"></i>
               </div>
             </div>

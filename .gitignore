@@ -1,127 +1,30 @@
-# Dependencies
-node_modules/
-old-version/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Documentation (通常包含本地开发文档)
-Documents/
-.iflow/
-.qoder/
+# 自定义忽略文件
+/CLAUDE.md
+/AGENTS.md
 .claude/
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+improveDoc/
 
 # Logs
-logs/
+logs
 *.log
-
-# Runtime data
-pids/
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-.nyc_output/
-
-# Temporary folders
-tmp/
-temp/
-
-# Build outputs
-build/
-.nuxt
-.next
-output/
-
-# Supabase local development
-supabase/.temp/
-supabase/storage/
-
-# Local development tools
-.vite/
-.cache/
-
-# Package manager specific
-.yarn/
-.yarn-cache/
-.yarn-metadata.json
-.pnp/
-.pnp.js
-
-# Editor specific
-/.vs
-*lock.json
-
-# Sensitive files
-config/
-secret/
-private/
-
-# Local VSCode settings
-.vscode/settings.json
-
-# Local Vite cache
-.vite/deps/
-
-# npm debug log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Test coverage reports
-coverage/
+node_modules
+dist
+dist-ssr
+*.local
 
-# IDE specific files
-*.iml
-*.ipr
-*.iws
-
-# Vim files
-.backup*
-.session
-.netrwhist
-*.un~
-*.swp
-*.swo
-
-# Windows file attributes
-Thumbs.db
-ehthumbs.db
-*.lnk
-
-# Editor backup files
-*~
-*.bak
-*.orig
-*.tmp
-
-# Local configuration files that should not be committed
-config.local.js
-*.local.*
-
-# Vue/Vite specific
-src/components/.DS_Store
-src/views/.DS_Store
-
-# Additional project specific ignores
-AGENTS.md
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

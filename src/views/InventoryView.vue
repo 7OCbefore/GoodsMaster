@@ -1,29 +1,9 @@
 <script setup>
-import { ref, computed, inject, onMounted } from 'vue';
-import { useStore } from '../composables/useSupabaseStore';
-
-const store = useStore();
-const { 
-  inventoryList, 
-  totalInventoryValue, 
-  totalInventoryCount, 
-  formatCurrency, 
-  goodsList,
-  user,
-  loadData
-} = store;
-
-const showToast = inject('showToast');
+import { ref, computed } from 'vue';
+import { useStore } from '../composables/useStore';
+const { inventoryList, totalInventoryValue, totalInventoryCount, formatCurrency, goodsList } = useStore();
 
 const search = ref('');
-
-// Load data when component mounts
-onMounted(async () => {
-  if (user.value) {
-    await loadData(user.value.id);
-  }
-});
-
 const filteredList = computed(() => {
   if (!search.value) return inventoryList.value;
   return inventoryList.value.filter(i => i.name.includes(search.value));

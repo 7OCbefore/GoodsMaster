@@ -1,16 +1,8 @@
 <script setup>
-import { inject, onMounted } from 'vue';
-import { useStore } from '../composables/useSupabaseStore';
+import { inject } from 'vue';
+import { useStore } from '../composables/useStore';
 
-const store = useStore();
-const { 
-  packages, 
-  goodsList, 
-  salesHistory, 
-  sellPrice,
-  user,
-  loadData
-} = store;
+const { packages, goodsList, salesHistory, sellPrice } = useStore();
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
 

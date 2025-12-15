@@ -2,9 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
-// Using function form, destructuring the command parameter
+// 使用函数形式，解构出 command 参数
 export default defineConfig(({ command }) => {
-  // Determine if we're in development (serve) or build environment
+  // 判断当前是在开发环境(serve) 还是 构建环境(build)
   const isProduction = command === 'build';
 
   return {
@@ -14,51 +14,10 @@ export default defineConfig(({ command }) => {
         '@': path.resolve(__dirname, './src')
       }
     },
-    // Core modification here:
-    // If it's a production build, use '/repository-name/'
-    // If it's local development, use '/'
-    base: './',
-    
-    // Build optimizations
-    build: {
-      // Increase chunk size warning limit
-      chunkSizeWarningLimit: 1000,
-      
-      // Manual chunking for better caching
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            // Vendor chunks
-            'vue-vendor': ['vue', 'vue-router'],
-            'supabase-vendor': ['@supabase/supabase-js'],
-            'xlsx': ['xlsx'],
-            
-            // UI components
-            'ui-components': [
-              './src/components/Toast.vue',
-              './src/components/Dialog.vue'
-            ],
-            
-            // Views (split each view into its own chunk)
-            'inbox-view': ['./src/views/InboxView.vue'],
-            'inventory-view': ['./src/views/InventoryView.vue'],
-            'sales-view': ['./src/views/SalesView.vue'],
-            'dashboard-view': ['./src/views/DashboardView.vue'],
-            'settings-view': ['./src/views/SettingsView.vue']
-          }
-        }
-      }
-    },
-    
-    // Development optimizations
-    server: {
-      // Enable compression in dev mode
-      compress: true,
-      
-      // Optimize deps
-      optimizeDeps: {
-        include: ['vue', '@supabase/supabase-js', 'xlsx']
-      }
-    }
+    // 核心修改在这里：
+    // 如果是生产构建 (build)，使用 '/仓库名/'
+    // 如果是本地开发 (serve)，使用 '/'
+    base: isProduction ? '/GoodsMaster/' : './', 
   }
 })
+
