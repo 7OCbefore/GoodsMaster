@@ -1,12 +1,10 @@
 <script setup>
 import { ref, computed, inject } from 'vue';
 import { useStore } from '../composables/useStore';
-import { useExport } from '../composables/useExport';
 
 const { selectedDate, dailyStats, chartData, lowStockItems, topSelling, formatCurrency, refundOrder, updateOrderNote, salesHistory, inventoryList } = useStore();
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
-const { exportToExcel } = useExport();
 
 // --- 日期处理 ---
 const showDatePicker = ref(false);
@@ -199,21 +197,30 @@ const isExporting = ref(false);
 const handleExport = async () => {
   isExporting.value = true;
   
-  // 模拟异步操作，给用户视觉反馈
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const result = exportToExcel({
-    salesHistory: salesHistory.value,
-    inventoryList: inventoryList.value,
-    selectedDate: selectedDate.value
-  });
-  
-  isExporting.value = false;
-  
-  if (result.success) {
-    showToast(`✅ 导出成功：${result.fileName}`);
-  } else {
-    showToast(`❌ 导出失败：${result.error}`);
+  try {
+    // 动态导入 useExport
+    const { useExport } = await import('../composables/useExport.js');
+    const { exportToExcel } = useExport();
+    
+    // 模拟异步操作，给用户视觉反馈
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    const result = exportToExcel({
+      salesHistory: salesHistory.value,
+      inventoryList: inventoryList.value,
+      selectedDate: selectedDate.value
+    });
+    
+    if (result.success) {
+      showToast(`✅ 导出成功：${result.fileName}`);
+    } else {
+      showToast(`❌ 导出失败：${result.error}`);
+    }
+  } catch (error) {
+    console.error('导出失败:', error);
+    showToast(`❌ 导出失败：${error.message}`);
+  } finally {
+    isExporting.value = false;
   }
 };
 </script>

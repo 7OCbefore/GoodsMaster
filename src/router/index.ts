@@ -1,9 +1,4 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router';
-import DashboardView from '../views/DashboardView.vue';
-import InboxView from '../views/InboxView.vue';
-import InventoryView from '../views/InventoryView.vue';
-import SalesView from '../views/SalesView.vue';
-import SettingsView from '../views/SettingsView.vue';
 
 // 定义路由
 const routes: Array<RouteRecordRaw> = [
@@ -14,31 +9,31 @@ const routes: Array<RouteRecordRaw> = [
   {
     path: '/dashboard',
     name: 'Dashboard',
-    component: DashboardView,
+    component: () => import('../views/DashboardView.vue'),
     meta: { depth: 0, keepAlive: true }
   },
   {
     path: '/inbox',
     name: 'Inbox',
-    component: InboxView,
+    component: () => import('../views/InboxView.vue'),
     meta: { depth: 0, keepAlive: true }
   },
   {
     path: '/inventory',
     name: 'Inventory',
-    component: InventoryView,
+    component: () => import('../views/InventoryView.vue'),
     meta: { depth: 0, keepAlive: true }
   },
   {
     path: '/sales',
     name: 'Sales',
-    component: SalesView,
+    component: () => import('../views/SalesView.vue'),
     meta: { depth: 0, keepAlive: true }
   },
   {
     path: '/settings',
     name: 'Settings',
-    component: SettingsView,
+    component: () => import('../views/SettingsView.vue'),
     meta: { depth: 0, keepAlive: true }
   },
   // 二级页面示例

@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, inject } from 'vue';
+import { ref, computed, inject, onMounted } from 'vue';
+import { useVirtualizer } from '@tanstack/vue-virtual';
 import { useStore } from '../composables/useStore';
 import VirtualNumPad from '../components/VirtualNumPad.vue';
 
@@ -54,6 +55,20 @@ const displayList = computed(() => {
     list = list.filter(i => i.quantity < 5);
   }
   return list;
+});
+
+// 虚拟滚动配置
+const parentRef = ref();
+
+// 计算每行的项目数，以便正确计算网格布局
+const itemsPerRow = 2; // grid-cols-2
+const rowCount = computed(() => Math.ceil(displayList.value.length / itemsPerRow));
+
+const rowVirtualizer = useVirtualizer({
+  count: rowCount.value,
+  getScrollElement: () => parentRef.value,
+  estimateSize: () => 136, // 根据网格项高度调整 (h-32 = 128px + 间隙)
+  overscan: 3,
 });
 
 const cartTotal = computed(() => cart.value.reduce((s, i) => s + (i.sellPrice * i.quantity), 0));
@@ -483,24 +498,65 @@ const handleEditNote = () => {
       </div>
 
       <!-- Right Grid -->
-      <div class="flex-1 overflow-y-auto p-4 bg-white rounded-tl-[32px] shadow-inner hide-scrollbar">
-        <!-- 修改点：将 grid-cols-3 改为 grid-cols-2 -->
-        <div class="grid grid-cols-2 gap-3">
-          <div v-for="item in displayList" :key="item.name" class="bg-surface p-3 rounded-2xl relative transition-transform border border-transparent active:border-primary/10 group h-32 flex flex-col justify-between">
-            <div class="absolute top-2 right-2 bg-white px-1.5 py-0.5 rounded text-[10px] font-bold text-gray-400 shadow-sm pointer-events-none">{{ item.quantity }}</div>
-            <div @click="addToCart(item)" class="flex-1 cursor-pointer">
-                <div class="font-bold text-sm text-primary leading-tight line-clamp-2 mt-1">{{ item.name }}</div>
-            </div>
-            <div class="flex justify-between items-end">
-              <div @click.stop="openGlobalPriceEdit(item)" class="group/price cursor-pointer px-1 -ml-1 rounded hover:bg-gray-200/50 transition-colors">
-                <div class="text-[10px] text-gray-400 flex items-center gap-1">售价 <i class="ph-bold ph-pencil-simple text-[8px] opacity-0 group-hover/price:opacity-100"></i></div>
-                <div class="text-sm font-extrabold text-primary">
-                    <span v-if="sellPrice[item.name]">¥{{ sellPrice[item.name] }}</span>
-                    <span v-else class="text-orange-500 text-xs">未定价</span>
+      <div ref="parentRef" class="flex-1 overflow-y-auto p-4 bg-white rounded-tl-[32px] shadow-inner hide-scrollbar">
+        <!-- 虚拟滚动网格 -->
+        <div :style="{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }" class="virtualized-grid">
+          <div
+            v-for="virtualRow in rowVirtualizer.getVirtualItems()"
+            :key="virtualRow.key"
+            :style="{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: `${virtualRow.size}px`,
+              transform: `translateY(${virtualRow.start}px)`,
+            }"
+          >
+            <div class="grid grid-cols-2 gap-3 h-full">
+              <!-- 每行最多显示2个项目 -->
+              <div 
+                v-for="j in itemsPerRow" 
+                :key="`${virtualRow.index}-${j}`"
+                :style="{ display: virtualRow.index * itemsPerRow + (j - 1) < displayList.length ? 'block' : 'none' }"
+              >
+                <div 
+                  v-if="virtualRow.index * itemsPerRow + (j - 1) < displayList.length"
+                  :key="displayList[virtualRow.index * itemsPerRow + (j - 1)].name"
+                  class="bg-surface p-3 rounded-2xl relative transition-transform border border-transparent active:border-primary/10 group h-32 flex flex-col justify-between"
+                >
+                  <div class="absolute top-2 right-2 bg-white px-1.5 py-0.5 rounded text-[10px] font-bold text-gray-400 shadow-sm pointer-events-none">
+                    {{ displayList[virtualRow.index * itemsPerRow + (j - 1)].quantity }}
+                  </div>
+                  <div @click="addToCart(displayList[virtualRow.index * itemsPerRow + (j - 1)])" class="flex-1 cursor-pointer">
+                    <div class="font-bold text-sm text-primary leading-tight line-clamp-2 mt-1">
+                      {{ displayList[virtualRow.index * itemsPerRow + (j - 1)].name }}
+                    </div>
+                  </div>
+                  <div class="flex justify-between items-end">
+                    <div 
+                      @click.stop="openGlobalPriceEdit(displayList[virtualRow.index * itemsPerRow + (j - 1)])" 
+                      class="group/price cursor-pointer px-1 -ml-1 rounded hover:bg-gray-200/50 transition-colors"
+                    >
+                      <div class="text-[10px] text-gray-400 flex items-center gap-1">
+                        售价 
+                        <i class="ph-bold ph-pencil-simple text-[8px] opacity-0 group-hover/price:opacity-100"></i>
+                      </div>
+                      <div class="text-sm font-extrabold text-primary">
+                        <span v-if="sellPrice[displayList[virtualRow.index * itemsPerRow + (j - 1)].name]">
+                          ¥{{ sellPrice[displayList[virtualRow.index * itemsPerRow + (j - 1)].name] }}
+                        </span>
+                        <span v-else class="text-orange-500 text-xs">未定价</span>
+                      </div>
+                    </div>
+                    <div 
+                      @click="addToCart(displayList[virtualRow.index * itemsPerRow + (j - 1)])" 
+                      class="w-7 h-7 bg-[#0A84FF] text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 active:scale-90 transition-transform cursor-pointer"
+                    >
+                      <i class="ph-bold ph-plus"></i>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div @click="addToCart(item)" class="w-7 h-7 bg-[#0A84FF] text-white rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 active:scale-90 transition-transform cursor-pointer">
-                <i class="ph-bold ph-plus"></i>
               </div>
             </div>
           </div>

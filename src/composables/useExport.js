@@ -1,8 +1,7 @@
-import * as XLSX from 'xlsx';
-
 /**
  * Excel 导出功能 Composable
  * 支持将销售数据、订单汇总、库存快照导出为 .xlsx 格式
+ * 使用动态导入避免在初始加载时引入庞大的 xlsx 库
  */
 export function useExport() {
   /**
@@ -12,8 +11,11 @@ export function useExport() {
    * @param {Array} params.inventoryList - 库存列表
    * @param {Date} params.selectedDate - 选中日期（可选，用于文件名）
    */
-  const exportToExcel = ({ salesHistory, inventoryList, selectedDate }) => {
+  const exportToExcel = async ({ salesHistory, inventoryList, selectedDate }) => {
     try {
+      // 动态导入 xlsx 库
+      const XLSX = await import('xlsx');
+
       // 创建工作簿
       const workbook = XLSX.utils.book_new();
 
