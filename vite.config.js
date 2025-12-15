@@ -14,10 +14,7 @@ export default defineConfig(({ command }) => {
         '@': path.resolve(__dirname, './src')
       }
     },
-    // 核心修改在这里：
-    // 如果是生产构建 (build)，使用 '/仓库名/'
-    // 如果是本地开发 (serve)，使用 '/'
-    base: isProduction ? '/GoodsMaster/' : './', 
+    base: './', 
   }
 })
 
