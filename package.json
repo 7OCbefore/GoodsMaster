@@ -16,6 +16,7 @@
   "dependencies": {
     "@phosphor-icons/web": "^2.0.3",
     "decimal.js": "^10.6.0",
+    "dexie": "^4.2.1",
     "vue": "^3.3.4",
     "xlsx": "^0.18.5"
   },

@@ -1,5 +1,6 @@
 <script setup>
-import { ref, reactive, provide } from 'vue';
+import { ref, reactive, provide, onMounted } from 'vue';
+import { useStore } from './composables/useStore';
 import InboxView from './views/InboxView.vue';
 import InventoryView from './views/InventoryView.vue';
 import SalesView from './views/SalesView.vue';
@@ -9,6 +10,22 @@ import Toast from './components/Toast.vue';
 import Dialog from './components/Dialog.vue';
 
 const currentTab = ref('dashboard');
+
+// --- 数据加载状态 ---
+const { loadFromDB, isLoading, hasLoaded } = useStore();
+const isAppLoading = ref(true);
+const loadError = ref(false);
+
+onMounted(async () => {
+  try {
+    await loadFromDB();
+  } catch (error) {
+    console.error('应用启动时数据加载失败:', error);
+    loadError.value = true;
+  } finally {
+    isAppLoading.value = false;
+  }
+});
 
 // --- Global UI State ---
 const toastState = reactive({ show: false, msg: '', type: 'success' });
@@ -55,11 +72,19 @@ const tabs = [
 
 <template>
   <div class="flex flex-col h-screen overflow-hidden bg-surface text-primary font-sans relative">
-    
+
+    <!-- 加载状态 -->
+    <div v-if="isAppLoading" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-surface">
+      <div class="text-center space-y-4">
+        <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+        <p class="text-gray-500">正在加载数据...</p>
+      </div>
+    </div>
+
     <!-- 全局组件 -->
     <Toast :show="toastState.show" :msg="toastState.msg" :type="toastState.type" />
-    <Dialog 
-      :show="dialogState.show" 
+    <Dialog
+      :show="dialogState.show"
       :title="dialogState.title"
       :content="dialogState.content"
       :confirmText="dialogState.confirmText"
@@ -72,11 +97,11 @@ const tabs = [
     />
 
     <!-- 主视图区域 -->
-    <div class="flex-1 overflow-hidden relative">
+    <div v-if="!isAppLoading" class="flex-1 overflow-hidden relative">
       <KeepAlive>
-        <component :is="currentTab === 'inbox' ? InboxView : 
-                        currentTab === 'inventory' ? InventoryView : 
-                        currentTab === 'dashboard' ? DashboardView : 
+        <component :is="currentTab === 'inbox' ? InboxView :
+                        currentTab === 'inventory' ? InventoryView :
+                        currentTab === 'dashboard' ? DashboardView :
                         currentTab === 'sales' ? SalesView : SettingsView" />
       </KeepAlive>
     </div>
