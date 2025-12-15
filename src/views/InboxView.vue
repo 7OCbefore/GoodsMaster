@@ -247,6 +247,80 @@ const confirmBatchAdd = () => {
   isAddModalOpen.value = false;
 };
 
+// 滑动删除状态
+const swipeToDeleteItem = ref(null);
+const swipeStates = ref({});
+
+// 处理滑动删除
+function handleSwipeToDelete(item) {
+  swipeToDeleteItem.value = item;
+  showDialog({
+    title: '确认删除',
+    content: `确定要删除 "${item.content}" 的进货记录吗？`,
+    isDanger: true,
+    confirmText: '删除',
+    action: () => {
+      const idx = packages.value.findIndex(p => p.id === item.id);
+      if (idx > -1) {
+        packages.value.splice(idx, 1);
+        showToast('已删除', 'success');
+        swipeToDeleteItem.value = null;
+      }
+    }
+  });
+}
+
+// 设置滑动状态
+function setSwipeState(id, x) {
+  swipeStates.value[id] = x;
+}
+
+// 处理触摸移动事件
+let startX = 0;
+let currentX = 0;
+
+function handleTouchMove(event, item) {
+  if (event.touches.length === 1) {
+    const touch = event.touches[0];
+    const diffX = touch.clientX - startX;
+    
+    // 限制滑动距离，最大为80px
+    const translateX = Math.max(-80, Math.min(0, (swipeStates.value[item.id] || 0) + diffX));
+    swipeStates.value[item.id] = translateX;
+    currentX = touch.clientX;
+  }
+}
+
+function handleTouchStart(event, item) {
+  if (event.touches.length === 1) {
+    startX = event.touches[0].clientX;
+    // 重置其他项的滑动状态
+    for (const key in swipeStates.value) {
+      if (key !== item.id.toString()) {
+        swipeStates.value[key] = 0;
+      }
+    }
+  }
+}
+
+function handleTouchEnd(item) {
+  // 如果滑动距离超过40px，则显示删除按钮
+  if ((swipeStates.value[item.id] || 0) < -40) {
+    swipeStates.value[item.id] = -80; // 完全滑出显示删除按钮
+  } else {
+    // 否则恢复原位
+    swipeStates.value[item.id] = 0;
+  }
+}
+
+// 修改模板中的事件绑定，添加start事件
+// 这里需要添加一个方法来绑定触摸开始事件
+function getTouchStartHandler(item) {
+  return (event) => {
+    handleTouchStart(event, item);
+  };
+}
+
 // --- 扫码逻辑 ---
 const isScanOpen = ref(false);
 const videoRef = ref(null);
@@ -332,26 +406,44 @@ const stopScan = () => {
         <span class="text-sm font-bold">暂无数据</span>
       </div>
 
-      <div v-for="item in filteredList" :key="item.id" class="bg-white p-4 rounded-2xl shadow-sm active:scale-[0.98] transition-transform border border-gray-50">
-        <div class="flex justify-between items-start mb-2">
-          <div class="font-bold text-lg text-primary">{{ item.content }}</div>
-          <span class="bg-secondary/10 text-secondary px-2 py-0.5 rounded text-xs font-bold">x{{ item.quantity }}</span>
+      <div 
+        v-for="item in filteredList" 
+        :key="item.id" 
+        class="relative mb-3"
+      >
+        <!-- 滑动删除背景按钮 -->
+        <div class="absolute right-0 top-0 h-full w-20 flex items-center justify-center bg-red-500 rounded-2xl pr-4 z-0">
+          <i class="ph-bold ph-trash text-white text-xl"></i>
         </div>
-        <div class="flex items-center gap-2 mb-3">
-          <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{{ item.tracking }}</span>
-          <button @click.stop="editPrice(item)" class="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors" :class="item.costPrice > 0 ? 'bg-orange-50 text-orange-600' : 'bg-red-50 text-red-500 animate-pulse'">
-            <i class="ph-bold ph-tag"></i>
-            <span class="font-bold">{{ item.costPrice > 0 ? `¥${item.costPrice}` : '补填进价' }}</span>
-          </button>
-        </div>
-        <div class="flex gap-3 pt-3 border-t border-gray-50">
-          <button @click.stop="toggleVerify(item)" class="flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors" :class="item.verified ? 'bg-gray-100 text-gray-500' : 'bg-[#0A84FF] text-white shadow-lg shadow-blue-500/30'">
-            <i :class="item.verified ? 'ph-bold ph-arrow-u-up-left' : 'ph-bold ph-check'"></i>
-            {{ item.verified ? '撤销' : '确认收货' }}
-          </button>
-          <button @click.stop="deleteItem(item.id)" class="w-12 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 active:text-red-500">
-            <i class="ph-bold ph-trash text-lg"></i>
-          </button>
+        
+        <!-- 可滑动的列表项 -->
+        <div 
+          class="bg-white p-4 rounded-2xl shadow-sm active:scale-[0.98] border border-gray-50 relative z-10"
+          :style="{ transform: `translateX(${swipeStates[item.id] || 0}px)`, transition: swipeStates[item.id] ? 'transform 0.2s ease-out' : 'none' }"
+          @touchstart="handleTouchStart($event, item)"
+          @touchmove="handleTouchMove($event, item)"
+          @touchend="handleTouchEnd(item)"
+        >
+          <div class="flex justify-between items-start mb-2">
+            <div class="font-bold text-lg text-primary">{{ item.content }}</div>
+            <span class="bg-secondary/10 text-secondary px-2 py-0.5 rounded text-xs font-bold">x{{ item.quantity }}</span>
+          </div>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{{ item.tracking }}</span>
+            <button @click.stop="editPrice(item)" class="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors" :class="item.costPrice > 0 ? 'bg-orange-50 text-orange-600' : 'bg-red-50 text-red-500 animate-pulse'">
+              <i class="ph-bold ph-tag"></i>
+              <span class="font-bold">{{ item.costPrice > 0 ? `¥${item.costPrice}` : '补填进价' }}</span>
+            </button>
+          </div>
+          <div class="flex gap-3 pt-3 border-t border-gray-50">
+            <button @click.stop="toggleVerify(item)" class="flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors" :class="item.verified ? 'bg-gray-100 text-gray-500' : 'bg-[#0A84FF] text-white shadow-lg shadow-blue-500/30'">
+              <i :class="item.verified ? 'ph-bold ph-arrow-u-up-left' : 'ph-bold ph-check'"></i>
+              {{ item.verified ? '撤销' : '确认收货' }}
+            </button>
+            <button @click.stop="deleteItem(item.id)" class="w-12 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 active:text-red-500">
+              <i class="ph-bold ph-trash text-lg"></i>
+            </button>
+          </div>
         </div>
       </div>
     </div>

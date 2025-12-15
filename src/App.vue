@@ -1,15 +1,12 @@
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, provide, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { useStore } from './composables/useStore';
-import InboxView from './views/InboxView.vue';
-import InventoryView from './views/InventoryView.vue';
-import SalesView from './views/SalesView.vue';
-import DashboardView from './views/DashboardView.vue';
-import SettingsView from './views/SettingsView.vue';
 import Toast from './components/Toast.vue';
 import Dialog from './components/Dialog.vue';
 
-const currentTab = ref('dashboard');
+const router = useRouter();
+const route = useRoute();
 
 // --- 数据加载状态 ---
 const { loadFromDB, isLoading, hasLoaded } = useStore();
@@ -62,12 +59,18 @@ const handleDialogConfirm = () => {
 };
 
 const tabs = [
-  { id: 'inbox', label: '进货', icon: 'ph-tray' },
-  { id: 'inventory', label: '库存', icon: 'ph-package' },
-  { id: 'dashboard', label: '总览', icon: 'ph-chart-pie-slice' },
-  { id: 'sales', label: '开单', icon: 'ph-storefront' },
-  { id: 'settings', label: '设置', icon: 'ph-gear' },
+  { id: 'inbox', label: '进货', icon: 'ph-tray', path: '/inbox' },
+  { id: 'inventory', label: '库存', icon: 'ph-package', path: '/inventory' },
+  { id: 'dashboard', label: '总览', icon: 'ph-chart-pie-slice', path: '/dashboard' },
+  { id: 'sales', label: '开单', icon: 'ph-storefront', path: '/sales' },
+  { id: 'settings', label: '设置', icon: 'ph-gear', path: '/settings' },
 ];
+
+// 判断当前路由是否为一级 Tab
+const isTabActive = (tabPath: string) => {
+  return route.path === tabPath || 
+         (tabPath === '/dashboard' && route.path === '/');
+};
 </script>
 
 <template>
@@ -98,11 +101,16 @@ const tabs = [
 
     <!-- 主视图区域 -->
     <div v-if="!isAppLoading" class="flex-1 overflow-hidden relative">
-      <KeepAlive>
-        <component :is="currentTab === 'inbox' ? InboxView :
-                        currentTab === 'inventory' ? InventoryView :
-                        currentTab === 'dashboard' ? DashboardView :
-                        currentTab === 'sales' ? SalesView : SettingsView" />
+      <!-- 为一级 Tab 页面添加 KeepAlive -->
+      <KeepAlive include="DashboardView,InboxView,InventoryView,SalesView,SettingsView">
+        <router-view v-slot="{ Component, route }">
+          <transition 
+            :name="route.meta?.depth === 1 ? 'slide-left' : 'fade'" 
+            mode="out-in"
+          >
+            <component :is="Component" :key="route.path" />
+          </transition>
+        </router-view>
       </KeepAlive>
     </div>
 
@@ -112,11 +120,11 @@ const tabs = [
         <button 
           v-for="tab in tabs" 
           :key="tab.id"
-          @click="currentTab = tab.id"
+          @click="router.push(tab.path)"
           class="flex-1 flex flex-col items-center justify-center gap-1 active:scale-90 transition-transform duration-200"
-          :class="currentTab === tab.id ? 'text-primary' : 'text-gray-400'"
+          :class="isTabActive(tab.path) ? 'text-primary' : 'text-gray-400'"
         >
-          <i :class="[currentTab === tab.id ? 'ph-fill' : 'ph-bold', tab.icon]" class="text-2xl"></i>
+          <i :class="[isTabActive(tab.path) ? 'ph-fill' : 'ph-bold', tab.icon]" class="text-2xl"></i>
           <span class="text-[10px] font-medium">{{ tab.label }}</span>
         </button>
       </div>
@@ -124,3 +132,49 @@ const tabs = [
 
   </div>
 </template>
+
+<style>
+/* 路由转场动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-left-enter-active {
+  transition: transform 0.3s ease;
+  position: absolute;
+  width: 100%;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.slide-left-leave-active {
+  transition: transform 0.3s ease;
+  position: absolute;
+  width: 100%;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.slide-left-enter-from {
+  transform: translateX(100%);
+}
+
+.slide-left-leave-to {
+  transform: translateX(-100%);
+}
+
+/* 为二级页面添加样式 */
+.page-container {
+  height: calc(100vh - 60px);
+  overflow-y: auto;
+  position: relative;
+}
+</style>

@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import './style.css'
 import App from './App.vue'
+import router from './router'
 import { migrateFromLocalStorage } from './db/migration'
 
 // 引入 Phosphor Icons 的核心 CSS
@@ -20,7 +21,7 @@ async function bootstrap() {
     // 可以考虑显示错误提示，这里简单继续启动
   }
 
-  createApp(App).mount('#app');
+  createApp(App).use(router).mount('#app');
 }
 
 bootstrap();

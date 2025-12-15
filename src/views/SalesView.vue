@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, inject } from 'vue';
 import { useStore } from '../composables/useStore';
+import VirtualNumPad from '../components/VirtualNumPad.vue';
 
 const { 
   inventoryList, 
@@ -19,8 +20,14 @@ const currentCategory = ref('all');
 const searchQuery = ref('');
 const isCartOpen = ref(false);
 const isHistoryOpen = ref(false); 
+const isNumPadVisible = ref(false);
+const currentInputField = ref(null);
 const cart = ref([]);
 const customerName = ref('');
+
+// 滑动状态变量
+let startX = 0;
+let currentX = 0;
 
 // 筛选按钮配置
 const categories = [
@@ -88,6 +95,132 @@ function updateCartQty(idx, delta) {
   if (newQty <= 0) cart.value.splice(idx, 1);
   else {
       item.quantity = newQty;
+  }
+}
+
+// 当前正在编辑的购物车项索引
+const currentCartIndex = ref(-1);
+
+// 打开虚拟数字键盘
+function openNumPad(field, index = -1) {
+  currentInputField.value = field;
+  currentCartIndex.value = index;
+  isNumPadVisible.value = true;
+  
+  // 阻止系统软键盘弹出
+  if (field === 'quantity' && index >= 0) {
+    // 确保当前输入框不会获得焦点
+    const activeElement = document.activeElement;
+    if (activeElement && activeElement.tagName === 'INPUT') {
+      activeElement.blur();
+    }
+  }
+}
+
+// 处理虚拟键盘输入
+function handleNumPadInput(value) {
+  if (currentInputField.value === 'quantity' && currentCartIndex.value >= 0) {
+    const item = cart.value[currentCartIndex.value];
+    if (value === '.') {
+      // 如果输入小数点，确保当前值中还没有小数点
+      if (!item.quantity.toString().includes('.')) {
+        item.quantity = item.quantity.toString() + '.';
+      }
+    } else {
+      // 直接拼接数字
+      if (item.quantity === 0 || item.quantity === '0') {
+        item.quantity = value;
+      } else {
+        item.quantity = item.quantity.toString() + value;
+      }
+    }
+  }
+}
+
+// 处理虚拟键盘删除
+function handleNumPadDelete() {
+  if (currentInputField.value === 'quantity' && currentCartIndex.value >= 0) {
+    let currentVal = cart.value[currentCartIndex.value].quantity.toString();
+    if (currentVal.length > 1) {
+      currentVal = currentVal.slice(0, -1);
+      cart.value[currentCartIndex.value].quantity = currentVal;
+    } else {
+      cart.value[currentCartIndex.value].quantity = 0;
+    }
+  }
+}
+
+// 处理虚拟键盘确认
+function handleNumPadConfirm(value) {
+  if (currentInputField.value === 'quantity' && currentCartIndex.value >= 0) {
+    let quantity = parseFloat(cart.value[currentCartIndex.value].quantity);
+    if (isNaN(quantity) || quantity <= 0) {
+      quantity = 1;
+    }
+    cart.value[currentCartIndex.value].quantity = Math.floor(quantity);
+  }
+  isNumPadVisible.value = false;
+  currentCartIndex.value = -1;
+}
+
+// 关闭虚拟键盘
+function closeNumPad() {
+  isNumPadVisible.value = false;
+  currentCartIndex.value = -1;
+}
+
+// 处理滑动删除
+function handleSwipeToDelete(itemName) {
+  showDialog({
+    title: '确认删除',
+    content: `确定要将 "${itemName}" 从购物车中删除吗？`,
+    isDanger: true,
+    confirmText: '删除',
+    action: () => {
+      const index = cart.value.findIndex(item => item.name === itemName);
+      if (index !== -1) {
+        cart.value.splice(index, 1);
+        showToast('已删除', 'success');
+      }
+    }
+  });
+}
+
+// 处理触摸开始事件
+function handleTouchStart(event, item, index) {
+  if (event.touches.length === 1) {
+    // 重置其他项的滑动状态
+    cart.value.forEach((cartItem, i) => {
+      if (i !== index) {
+        cartItem.swipeX = 0;
+      }
+    });
+    
+    startX = event.touches[0].clientX;
+  }
+}
+
+// 处理触摸移动事件
+function handleTouchMove(event, item, index) {
+  if (event.touches.length === 1) {
+    const touch = event.touches[0];
+    const diffX = touch.clientX - startX;
+    
+    // 限制滑动距离，最大为80px
+    const translateX = Math.max(-80, Math.min(0, (item.swipeX || 0) + diffX));
+    item.swipeX = translateX;
+    currentX = touch.clientX;
+  }
+}
+
+// 处理触摸结束事件
+function handleTouchEnd(item, index) {
+  // 如果滑动距离超过40px，则显示删除按钮
+  if ((item.swipeX || 0) < -40) {
+    item.swipeX = -80; // 完全滑出显示删除按钮
+  } else {
+    // 否则恢复原位
+    item.swipeX = 0;
   }
 }
 
@@ -412,27 +545,41 @@ const handleEditNote = () => {
           </div>
           
           <div class="flex-1 overflow-y-auto space-y-3 mb-6 pr-1 hide-scrollbar">
-            <div v-for="(item, i) in cart" :key="i" class="bg-white p-3 rounded-2xl flex justify-between items-center shadow-sm"
-                 :class="{ 'border border-danger border-2': item.quantity > item.maxStock }">
-              <div class="flex-1 mr-3">
-                <div class="font-bold text-primary truncate">{{ item.name }}</div>
-                <div class="flex items-center gap-2 mt-1">
-                  <div @click="editCartItemPrice(item, i)" class="text-xs font-bold bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1">
-                    ¥{{ item.sellPrice }}
-                    <i class="ph-bold ph-pencil-simple text-[8px]"></i>
-                  </div>
-                  <span class="text-[10px] text-gray-400">利润 ¥{{ ((item.sellPrice - item.costSnapshot)*item.quantity).toFixed(1) }}</span>
-                </div>
+            <div v-for="(item, i) in cart" :key="i" class="relative mb-3">
+              <!-- 滑动删除背景按钮 -->
+              <div class="absolute right-0 top-0 h-full w-20 flex items-center justify-center bg-red-500 rounded-2xl pr-4 z-0" @click="handleSwipeToDelete(item.name)">
+                <i class="ph-bold ph-trash text-white text-xl"></i>
               </div>
-              <div class="flex items-center gap-2 bg-surface rounded-xl p-1 shadow-inner">
-                <button @click="updateCartQty(i, -1)" class="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center text-primary font-bold">-</button>
-                <input 
-                  type="tel" 
-                  v-model="item.quantity" 
-                  @blur="handleQuantityChange(i)"
-                  class="w-10 bg-transparent text-center font-bold text-sm outline-none p-0 appearance-none"
-                  :class="{ 'text-danger font-extrabold': item.quantity > item.maxStock }">
-                <button @click="updateCartQty(i, 1)" class="w-8 h-8 bg-[#0A84FF] text-white rounded-lg shadow-sm flex items-center justify-center font-bold">+</button>
+              
+              <!-- 可滑动的购物车项 -->
+              <div class="bg-white p-3 rounded-2xl flex justify-between items-center shadow-sm relative z-10"
+                   :class="{ 'border border-danger border-2': item.quantity > item.maxStock }"
+                   @touchstart="handleTouchStart($event, item, i)"
+                   @touchmove="handleTouchMove($event, item, i)"
+                   @touchend="handleTouchEnd(item, i)"
+                   :style="{ transform: `translateX(${item.swipeX || 0}px)`, transition: item.swipeX ? 'transform 0.2s ease-out' : 'none' }">
+                <div class="flex-1 mr-3">
+                  <div class="font-bold text-primary truncate">{{ item.name }}</div>
+                  <div class="flex items-center gap-2 mt-1">
+                    <div @click="editCartItemPrice(item, i)" class="text-xs font-bold bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1">
+                      ¥{{ item.sellPrice }}
+                      <i class="ph-bold ph-pencil-simple text-[8px]"></i>
+                    </div>
+                    <span class="text-[10px] text-gray-400">利润 ¥{{ ((item.sellPrice - item.costSnapshot)*item.quantity).toFixed(1) }}</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 bg-surface rounded-xl p-1 shadow-inner">
+                  <button @click="updateCartQty(i, -1)" class="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center text-primary font-bold">-</button>
+                  <input 
+                    type="tel" 
+                    v-model="item.quantity" 
+                    @blur="handleQuantityChange(i)"
+                    @focus.prevent="openNumPad('quantity', i)"
+                    class="w-10 bg-transparent text-center font-bold text-sm outline-none p-0 appearance-none"
+                    :class="{ 'text-danger font-extrabold': item.quantity > item.maxStock }"
+                    readonly>
+                  <button @click="updateCartQty(i, 1)" class="w-8 h-8 bg-[#0A84FF] text-white rounded-lg shadow-sm flex items-center justify-center font-bold">+</button>
+                </div>
               </div>
             </div>
           </div>
@@ -521,5 +668,14 @@ const handleEditNote = () => {
         </div>
       </div>
     </Transition>
+
+    <!-- 虚拟数字键盘 -->
+    <VirtualNumPad 
+      :visible="isNumPadVisible"
+      @input="handleNumPadInput"
+      @delete="handleNumPadDelete"
+      @confirm="handleNumPadConfirm"
+      @close="closeNumPad"
+    />
   </div>
 </template>
