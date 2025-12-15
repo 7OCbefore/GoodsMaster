@@ -39,6 +39,7 @@ class GoodsMasterDB extends Dexie {
   constructor() {
     super('GoodsMasterDB');
 
+    // 版本1：初始数据库结构
     this.version(1).stores({
       // packages表：id为主键，索引batchId、timestamp、verified用于快速查询
       packages: 'id, batchId, timestamp, verified',
@@ -50,6 +51,36 @@ class GoodsMasterDB extends Dexie {
       sellPrices: '++id, goodsName',
       // snapshots表：自增id为主键，索引date和type用于按日期和类型查询快照
       snapshots: '++id, date, type'
+    });
+
+    // 版本2：添加云端同步所需的字段
+    this.version(2).stores({
+      // packages表：添加updated_at字段用于同步
+      packages: 'id, batchId, timestamp, verified, updated_at',
+      // sales表：添加updated_at字段用于同步
+      sales: 'id, timestamp, status, updated_at',
+      // goods表保持不变
+      goods: '++id, &name',
+      // sellPrices表保持不变
+      sellPrices: '++id, goodsName',
+      // snapshots表保持不变
+      snapshots: '++id, date, type'
+    }).upgrade((transaction) => {
+      // 当升级到版本2时，为现有数据添加updated_at字段
+      return Promise.all([
+        // 为packages表中的所有记录添加updated_at字段
+        transaction.table('packages').toCollection().modify(pkg => {
+          if (!pkg.updated_at) {
+            pkg.updated_at = new Date().toISOString();
+          }
+        }),
+        // 为sales表中的所有记录添加updated_at字段
+        transaction.table('sales').toCollection().modify(sale => {
+          if (!sale.updated_at) {
+            sale.updated_at = new Date().toISOString();
+          }
+        })
+      ]);
     });
   }
 }

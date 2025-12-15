@@ -2,6 +2,7 @@ import { ref, computed, watch } from 'vue';
 import Decimal from 'decimal.js';
 import { Package, Order, InventoryItem, DailyStats, ChartData, Goods } from '../types/domain';
 import { db } from '../db/index';
+import { syncService } from '../services/syncService';
 
 // --- 单例状态 ---
 const packages = ref<Package[]>([]);
@@ -105,6 +106,11 @@ watch(packages, async (newPackages, oldPackages) => {
         timestamp: pkg.timestamp
       }));
       await db.packages.bulkPut(records);
+      
+      // 触发同步到云端
+      for (const pkg of newPackages) {
+        syncService.pushToCloud('packages', pkg).catch(console.error);
+      }
     }
   } catch (error) {
     console.error('同步packages到数据库失败:', error);
@@ -120,6 +126,11 @@ watch(salesHistory, async (newSales) => {
     // 注意：这种方法不会删除数据库中已删除的订单（销售订单通常不会被删除）
     if (newSales.length > 0) {
       await db.sales.bulkPut(newSales);
+      
+      // 触发同步到云端
+      for (const sale of newSales) {
+        syncService.pushToCloud('sales', sale).catch(console.error);
+      }
     }
   } catch (error) {
     console.error('同步sales到数据库失败:', error);

@@ -13,6 +13,8 @@ export interface Order {
   totalProfit: number;
   status: 'completed' | 'refunded';
   note?: string;
+  updated_at?: string;  // 同步时间戳
+  user_id?: string;     // 用户ID（云端）
 }
 
 export interface Package {
@@ -25,6 +27,8 @@ export interface Package {
   note?: string;
   verified: boolean;
   timestamp: number;
+  updated_at?: string;  // 同步时间戳
+  user_id?: string;     // 用户ID（云端）
 }
 
 export type Goods = string;

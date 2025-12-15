@@ -2,6 +2,7 @@
 import { ref, reactive, provide, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useStore } from './composables/useStore';
+import { syncService } from './services/syncService';
 import Toast from './components/Toast.vue';
 import Dialog from './components/Dialog.vue';
 
@@ -15,7 +16,16 @@ const loadError = ref(false);
 
 onMounted(async () => {
   try {
+    // 首先加载本地数据以保证快速响应
     await loadFromDB();
+    
+    // 然后尝试从云端同步数据（如果已配置并认证）
+    try {
+      await syncService.sync();
+    } catch (syncError) {
+      console.warn('云端同步失败，将继续使用本地数据:', syncError);
+      // 即使同步失败，也不应阻止应用启动
+    }
   } catch (error) {
     console.error('应用启动时数据加载失败:', error);
     loadError.value = true;
