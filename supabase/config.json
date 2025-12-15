@@ -1,0 +1,16 @@
+{
+  "project": "goods-master",
+  "version": "1.0",
+  "auth": {
+    "enabled": true,
+    "jwt_expiry": 3600,
+    "refresh_token_expiry": 2592000
+  },
+  "database": {
+    "port": 5432,
+    "version": "15"
+  },
+  "migrations": {
+    "directory": "supabase/migrations"
+  }
+}
