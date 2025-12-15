@@ -2,24 +2,27 @@ import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
 import { db } from '../db';
 import type { Package, SalesOrder, Product } from '../types/domain';
 
+// 简单的 UUID 生成器 (符合 RFC4122 v4)
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 class SyncService {
   private isSyncing = false;
 
   /**
-   * 将单条数据推送到云端 (Push Single Item)
-   * 包含字段映射逻辑：Frontend (camelCase) -> DB (snake_case)
+   * 核心：推送单条数据 (Push Single Item)
    */
   async pushToCloud(table: 'packages' | 'sales' | 'products', data: any) {
-    if (!isSupabaseConfigured || !supabase) {
-      console.warn('Sync skipped: Supabase not configured');
-      return;
-    }
+    if (!isSupabaseConfigured || !supabase) return;
 
     try {
       const user = await getCurrentUser();
       const timestamp = new Date().toISOString();
 
-      // 公共字段
       const commonFields = {
         user_id: user.id,
         updated_at: timestamp,
@@ -29,14 +32,19 @@ class SyncService {
       let tableName = '';
       let payload = {};
 
-      // --- 核心：字段映射 (Mapping) ---
       if (table === 'packages') {
         tableName = 'packages';
         const pkg = data as Package;
+        
+        // [安全守卫] 如果没有 productId，绝对不能上传，否则数据库报错
+        if (!pkg.productId) {
+           throw new Error(`Package ${pkg.content} is missing productId. Skipping.`);
+        }
+
         payload = {
           ...commonFields,
-          id: pkg.id, // ID
-          product_id: pkg.productId, // [关键] 映射 productId -> product_id
+          id: pkg.id, // numeric
+          product_id: pkg.productId, // UUID
           batch_id: pkg.batchId,
           tracking: pkg.tracking,
           content: pkg.content,
@@ -51,11 +59,11 @@ class SyncService {
         const sale = data as SalesOrder;
         payload = {
           ...commonFields,
-          id: sale.id,
+          id: sale.id, // numeric
           customer: sale.customer,
           total_amount: sale.totalAmount,
           total_profit: sale.totalProfit,
-          items: sale.items, // JSONB 直接存
+          items: sale.items,
           status: sale.status,
           note: sale.note,
           timestamp: sale.timestamp
@@ -65,32 +73,33 @@ class SyncService {
         const prod = data as Product;
         payload = {
           ...commonFields,
-          id: prod.id,
+          id: prod.id, // UUID
           name: prod.name,
           barcode: prod.barcode,
           price: prod.price,
           stock_warning: prod.stock_warning,
           category: prod.category,
-          created_at: prod.created_at || timestamp // 补全创建时间
+          created_at: prod.created_at || timestamp
         };
       }
 
-      // 执行 Upsert
       const { error } = await supabase
         .from(tableName)
         .upsert(payload, { onConflict: 'id' });
 
-      if (error) throw error;
+      if (error) {
+        console.error(`Supabase error for ${table} ID ${data.id}:`, error.message);
+        throw error;
+      }
       
     } catch (error) {
-      console.error(`Push to cloud failed for ${table}:`, error);
-      // 在真实系统中，这里应该将失败任务加入重试队列
+      // 抛出错误以便上层捕获
+      throw error;
     }
   }
 
   /**
-   * 从云端拉取数据 (Pull All Data)
-   * 包含反向映射逻辑：DB (snake_case) -> Frontend (camelCase)
+   * 拉取数据 (Pull) - 反向映射
    */
   async pullFromCloud() {
     if (!isSupabaseConfigured || !supabase) return;
@@ -99,7 +108,6 @@ class SyncService {
     try {
       const user = await getCurrentUser();
 
-      // 1. 并行拉取所有表的数据
       const [productsRes, packagesRes, salesRes] = await Promise.all([
         supabase.from('products').select('*').eq('user_id', user.id).eq('is_deleted', false),
         supabase.from('packages').select('*').eq('user_id', user.id).eq('is_deleted', false),
@@ -110,24 +118,19 @@ class SyncService {
       if (packagesRes.error) throw packagesRes.error;
       if (salesRes.error) throw salesRes.error;
 
-      // 2. 开启 Dexie 事务进行批量写入
       await db.transaction('rw', db.products, db.packages, db.sales, async () => {
-        // 先清空本地 (简单粗暴的同步策略，适合单人模式)
-        // 优化建议：如果是多人协作，这里应该做 Diff 比较
         await db.products.clear();
         await db.packages.clear();
         await db.sales.clear();
 
-        // 写入 Products
         if (productsRes.data?.length) {
           await db.products.bulkAdd(productsRes.data as unknown as Product[]);
         }
 
-        // 写入 Packages (需映射字段)
         if (packagesRes.data?.length) {
           const mappedPackages = packagesRes.data.map((row: any) => ({
-            id: row.id,
-            productId: row.product_id, // [关键] 反向映射
+            id: Number(row.id), // 转回 Number
+            productId: row.product_id, 
             batchId: row.batch_id,
             tracking: row.tracking,
             content: row.content,
@@ -135,17 +138,15 @@ class SyncService {
             costPrice: row.cost_price,
             note: row.note,
             verified: row.verified,
-            timestamp: row.timestamp,
-            // 本地不需要 user_id, updated_at 等字段，Dexie 会自动忽略或你可以显式剔除
+            timestamp: Number(row.timestamp),
           }));
           await db.packages.bulkAdd(mappedPackages as unknown as Package[]);
         }
 
-        // 写入 Sales (需映射字段)
         if (salesRes.data?.length) {
           const mappedSales = salesRes.data.map((row: any) => ({
-            id: row.id,
-            timestamp: row.timestamp,
+            id: Number(row.id),
+            timestamp: Number(row.timestamp),
             customer: row.customer,
             totalAmount: row.total_amount,
             totalProfit: row.total_profit,
@@ -159,7 +160,7 @@ class SyncService {
 
       console.log('☁️ Cloud sync completed successfully');
     } catch (error) {
-      console.error('Pull from cloud failed:', error);
+      console.error('Pull failed:', error);
       throw error;
     } finally {
       this.isSyncing = false;
@@ -167,36 +168,90 @@ class SyncService {
   }
 
   /**
-   * 全量备份 (Backup All)
-   * 必须严格遵守写入顺序：Products -> Packages -> Sales
+   * 智能全量备份 (Smart Backup with Auto-Hydration)
    */
   async backupToCloud() {
     if (!isSupabaseConfigured || !supabase || this.isSyncing) return;
     
     this.isSyncing = true;
     try {
-      // 1. 读取本地所有数据
+      // 1. 读取本地数据
       const [localProducts, localPackages, localSales] = await Promise.all([
         db.products.toArray(),
         db.packages.toArray(),
         db.sales.toArray()
       ]);
 
-      console.log(`Starting backup: ${localProducts.length} products, ${localPackages.length} packages...`);
+      console.log(`🚀 Starting backup: ${localProducts.length} Prods, ${localPackages.length} Pkgs`);
 
-      // 2. [Step 1] 同步 Products (主数据)
-      // 必须先同步这个，否则 Packages 的 product_id 外键会报错
+      // 2. 建立索引：商品名 -> UUID
+      const productNameToIdMap = new Map<string, string>();
+      const existingProductIds = new Set<string>();
+
+      // 先上传所有已知商品
       for (const prod of localProducts) {
         await this.pushToCloud('products', prod);
+        productNameToIdMap.set(prod.name, prod.id);
+        existingProductIds.add(prod.id);
       }
 
-      // 3. [Step 2] 同步 Packages (事务数据)
-      // 使用 for...of 循环串行发送，或者 Promise.all 并发发送
-      // 为了稳定性，这里使用分批并发 (Batching) 会更好，但为保持代码简洁，暂时用 Promise.all
-      const packagePromises = localPackages.map(pkg => this.pushToCloud('packages', pkg));
-      await Promise.all(packagePromises);
+      // 3. 智能上传 Packages (自动创建缺失商品)
+      for (const pkg of localPackages) {
+        let fixedPkg = { ...pkg };
+        let needsUpdateInLocalDB = false;
 
-      // 4. [Step 3] 同步 Sales
+        // 情况A: 缺少 productId
+        // 情况B: 有 productId，但这个 ID 在 products 表里不存在 (孤儿引用)
+        const isOrphan = pkg.productId && !existingProductIds.has(pkg.productId);
+
+        if (!pkg.productId || isOrphan) {
+          console.log(`🔧 Fixing orphan package: ${pkg.content}`);
+          
+          // 尝试按名字查找
+          let foundId = productNameToIdMap.get(pkg.content);
+
+          // 如果连名字都找不到，创建一个新商品！
+          if (!foundId) {
+            const newId = generateUUID();
+            const newProduct: Product = {
+              id: newId,
+              name: pkg.content, // 使用包里的商品名
+              price: 0, // 默认价格
+              stock_warning: 5,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              is_deleted: false
+            };
+            
+            // 立即上传这个新商品
+            console.log(`✨ Auto-creating missing product: ${pkg.content} (${newId})`);
+            await this.pushToCloud('products', newProduct);
+            
+            // 更新索引
+            productNameToIdMap.set(newProduct.name, newId);
+            existingProductIds.add(newId);
+            
+            // 同时也存入本地 DB，防止下次还缺
+            await db.products.put(newProduct);
+            
+            foundId = newId;
+          }
+
+          // 修复 Package 引用
+          fixedPkg.productId = foundId;
+          needsUpdateInLocalDB = true;
+        }
+
+        // 如果我们在内存里修复了数据，顺便也更新一下本地 DB，保持一致性
+        if (needsUpdateInLocalDB) {
+           await db.packages.put(fixedPkg);
+        }
+
+        // 上传修复后的 Package
+        await this.pushToCloud('packages', fixedPkg);
+      }
+
+      // 4. 上传 Sales
       const salesPromises = localSales.map(sale => this.pushToCloud('sales', sale));
       await Promise.all(salesPromises);
 
