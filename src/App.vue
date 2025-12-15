@@ -19,8 +19,9 @@ onMounted(async () => {
     // 首先加载本地数据以保证快速响应
     await loadFromDB();
     
-    // 然后尝试从云端同步数据（如果已配置并认证）
+    // 然后尝试从云端同步数据（如果已配置）
     try {
+      // 自动执行云端同步
       await syncService.sync();
     } catch (syncError) {
       console.warn('云端同步失败，将继续使用本地数据:', syncError);

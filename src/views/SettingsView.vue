@@ -2,7 +2,6 @@
 import { inject } from 'vue';
 import { useStore } from '../composables/useStore';
 import { syncService } from '../services/syncService';
-import { supabase } from '../services/supabase';
 
 const { packages, goodsList, salesHistory, sellPrice } = useStore();
 const showToast = inject('showToast');
@@ -80,12 +79,6 @@ const syncWithCloud = async () => {
 
 const backupToCloud = async () => {
   try {
-    const user = supabase ? await supabase.auth.getUser() : null;
-    if (!user?.data.user) {
-      showToast('请先登录以使用云同步功能', 'error');
-      return;
-    }
-
     showToast('正在备份数据到云端...', 'info');
     await syncService.backupToCloud();
     showToast('数据已备份到云端');
@@ -93,20 +86,6 @@ const backupToCloud = async () => {
     console.error('云端备份失败:', error);
     showToast('云端备份失败: ' + error.message, 'error');
   }
-};
-
-// 检查用户是否已登录
-const isUserLoggedIn = async () => {
-  if (!supabase) return false;
-  const user = await supabase.auth.getUser();
-  return !!user.data.user;
-};
-
-// 获取用户信息
-const getUserInfo = async () => {
-  if (!supabase) return null;
-  const user = await supabase.auth.getUser();
-  return user.data.user;
 };
 </script>
 
@@ -117,7 +96,21 @@ const getUserInfo = async () => {
     </header>
 
     <div class="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
-      <!-- Cloud Sync Section -->
+      <!-- Cloud Sync Status -->
+      <div class="p-5 border-b border-gray-50 flex items-center justify-between active:bg-gray-50 transition-colors cursor-default">
+        <div class="flex items-center gap-4">
+          <div class="w-10 h-10 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
+            <i class="ph-bold ph-cloud-check text-xl"></i>
+          </div>
+          <div>
+            <div class="font-bold text-primary text-sm">云同步</div>
+            <div class="text-[10px] text-gray-400">已启用 (单机模式)</div>
+          </div>
+        </div>
+        <div class="w-3 h-3 rounded-full bg-green-500"></div>
+      </div>
+
+      <!-- Cloud Sync Actions -->
       <div @click="syncWithCloud" class="p-5 border-b border-gray-50 flex items-center justify-between active:bg-gray-50 transition-colors cursor-pointer">
         <div class="flex items-center gap-4">
           <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">

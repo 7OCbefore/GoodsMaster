@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
 import { db } from '../db';
 import { Package, Order } from '../types/domain';
 
@@ -17,16 +17,13 @@ class SyncService {
     }
 
     try {
-      const user = await supabase.auth.getUser();
-      if (!user.data.user) {
-        console.warn('User not authenticated, skipping sync');
-        return;
-      }
+      // 使用硬编码的全局用户ID
+      const user = getCurrentUser();
 
       // 添加用户ID和时间戳
       const userData = {
         ...data,
-        user_id: user.data.user.id,
+        user_id: user.id,
         updated_at: new Date().toISOString(),
         is_deleted: false
       };
@@ -65,18 +62,15 @@ class SyncService {
     }
 
     try {
-      const user = await supabase.auth.getUser();
-      if (!user.data.user) {
-        console.warn('User not authenticated, skipping sync');
-        return;
-      }
+      // 使用硬编码的全局用户ID
+      const user = getCurrentUser();
 
       // 获取云端数据，使用增量同步（仅获取比本地最后同步时间更新的数据）
       // 这里暂时实现全量拉取，后续可以优化为增量同步
       const { data: packagesData, error: packagesError } = await supabase
         .from('packages')
         .select('*')
-        .eq('user_id', user.data.user.id)
+        .eq('user_id', user.id)
         .is('is_deleted', false) // 只获取未删除的数据
         .order('updated_at', { ascending: false });
 
@@ -88,7 +82,7 @@ class SyncService {
       const { data: salesData, error: salesError } = await supabase
         .from('sales')
         .select('*')
-        .eq('user_id', user.data.user.id)
+        .eq('user_id', user.id)
         .is('is_deleted', false) // 只获取未删除的数据
         .order('updated_at', { ascending: false });
 
@@ -145,11 +139,8 @@ class SyncService {
     }
 
     try {
-      const user = await supabase.auth.getUser();
-      if (!user.data.user) {
-        console.warn('User not authenticated, skipping backup');
-        return;
-      }
+      // 使用硬编码的全局用户ID
+      const user = getCurrentUser();
 
       // 获取本地所有数据
       const [localPackages, localSales] = await Promise.all([
@@ -161,7 +152,7 @@ class SyncService {
       if (localPackages.length > 0) {
         const packagesForSync = localPackages.map(pkg => ({
           ...pkg,
-          user_id: user.data.user!.id,
+          user_id: user.id,
           updated_at: new Date().toISOString(),
           is_deleted: false
         }));
@@ -180,7 +171,7 @@ class SyncService {
       if (localSales.length > 0) {
         const salesForSync = localSales.map(sale => ({
           ...sale,
-          user_id: user.data.user!.id,
+          user_id: user.id,
           updated_at: new Date().toISOString(),
           is_deleted: false
         }));
