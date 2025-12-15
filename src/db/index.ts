@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { Order, Package, Goods } from '../types/domain';
+import { Order, Package, Goods, Product } from '../types/domain';
 
 // 扩展接口以支持Dexie的索引属性
 export interface PackageRecord extends Package {
@@ -21,6 +21,10 @@ export interface SellPriceRecord {
   price: number; // 销售价格
 }
 
+export interface ProductRecord extends Product {
+  // 继承Product接口的所有字段
+}
+
 // 快照表（未来扩展用）
 export interface SnapshotRecord {
   id?: number;
@@ -34,6 +38,7 @@ class GoodsMasterDB extends Dexie {
   sales!: Dexie.Table<OrderRecord, string>; // 主键为string类型的id
   goods!: Dexie.Table<GoodsRecord, number>; // 主键为自增id
   sellPrices!: Dexie.Table<SellPriceRecord, number>; // 主键为自增id
+  products!: Dexie.Table<ProductRecord, string>; // 主键为string类型的id (UUID)
   snapshots!: Dexie.Table<SnapshotRecord, number>; // 主键为自增id
 
   constructor() {
@@ -81,6 +86,22 @@ class GoodsMasterDB extends Dexie {
           }
         })
       ]);
+    });
+
+    // 版本3：引入Product主数据模型
+    this.version(3).stores({
+      // 添加products表，id为主键，name和updated_at索引用于查询和同步
+      products: 'id, name, updated_at, user_id',
+      // packages表保持不变，productId字段不加索引（可选字段）
+      packages: 'id, batchId, timestamp, verified, updated_at',
+      // sales表保持不变
+      sales: 'id, timestamp, status, updated_at',
+      // goods表保持不变（向后兼容）
+      goods: '++id, &name',
+      // sellPrices表保持不变（向后兼容）
+      sellPrices: '++id, goodsName',
+      // snapshots表保持不变
+      snapshots: '++id, date, type'
     });
   }
 }

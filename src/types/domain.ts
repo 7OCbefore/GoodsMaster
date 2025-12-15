@@ -1,5 +1,6 @@
 export interface OrderItem {
   name: string;
+  productId?: string; // 关联到 Product.id
   quantity: number;
   sellPrice: number;
   costSnapshot: number;
@@ -22,6 +23,7 @@ export interface Package {
   batchId?: string;
   tracking?: string;
   content: string;
+  productId?: string; // 关联到 Product.id
   quantity: number;
   costPrice: number;
   note?: string;
@@ -53,4 +55,16 @@ export interface ChartData {
   values: number[];
   revenueValues: number[];
   max: number;
+}
+
+export interface Product {
+  id: string; // UUID
+  user_id: string; // Global User ID
+  name: string;
+  barcode?: string; // 条码
+  price: number; // 零售价
+  stock_warning: number; // 预警阈值
+  category?: string;
+  updated_at: string;
+  is_deleted: boolean;
 }

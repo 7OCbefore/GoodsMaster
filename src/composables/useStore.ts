@@ -1,14 +1,16 @@
 import { ref, computed, watch } from 'vue';
 import Decimal from 'decimal.js';
-import { Package, Order, InventoryItem, DailyStats, ChartData, Goods } from '../types/domain';
+import { Package, Order, InventoryItem, DailyStats, ChartData, Goods, Product } from '../types/domain';
 import { db } from '../db/index';
 import { syncService } from '../services/syncService';
+import { migrateDataStructure } from '../db/migrateToProducts';
 
 // --- 单例状态 ---
 const packages = ref<Package[]>([]);
-const goodsList = ref<Goods[]>([]);
+const goodsList = ref<Goods[]>([]); // 废弃，向后兼容
 const salesHistory = ref<Order[]>([]);
-const sellPrice = ref<Record<string, number>>({});
+const sellPrice = ref<Record<string, number>>({}); // 废弃，向后兼容
+const products = ref<Product[]>([]); // 新的商品主数据
 
 // 全局选中的日期 (用于 Dashboard 时间旅行)
 const selectedDate = ref<Date>(new Date());
@@ -24,12 +26,16 @@ async function loadFromDB(): Promise<void> {
   isLoading.value = true;
   isUpdatingFromDB = true; // 防止触发watch
   try {
-    // 并行加载所有表数据
-    const [packageRecords, orderRecords, goodsRecords, sellPriceRecords] = await Promise.all([
+    // 先运行数据迁移，确保Product表存在且数据已迁移
+    await migrateDataStructure();
+
+    // 并行加载所有表数据（包括新的products表）
+    const [packageRecords, orderRecords, goodsRecords, sellPriceRecords, productRecords] = await Promise.all([
       db.packages.toArray(),
       db.sales.toArray(),
       db.goods.toArray(),
-      db.sellPrices.toArray()
+      db.sellPrices.toArray(),
+      db.products.toArray()
     ]);
 
     // 转换数据格式以匹配现有类型
@@ -38,6 +44,7 @@ async function loadFromDB(): Promise<void> {
       batchId: record.batchId,
       tracking: record.tracking,
       content: record.content,
+      productId: record.productId, // 新增字段
       quantity: record.quantity,
       costPrice: record.costPrice,
       note: record.note,
@@ -47,6 +54,7 @@ async function loadFromDB(): Promise<void> {
 
     salesHistory.value = orderRecords;
 
+    // 保留goodsList和sellPrice用于向后兼容
     goodsList.value = goodsRecords.map(record => record.name);
 
     const sellPriceMap: Record<string, number> = {};
@@ -54,6 +62,9 @@ async function loadFromDB(): Promise<void> {
       sellPriceMap[record.goodsName] = record.price;
     });
     sellPrice.value = sellPriceMap;
+
+    // 加载products
+    products.value = productRecords;
 
     hasLoaded.value = true;
     console.log('数据加载完成');
@@ -99,6 +110,7 @@ watch(packages, async (newPackages, oldPackages) => {
         batchId: pkg.batchId,
         tracking: pkg.tracking,
         content: pkg.content,
+        productId: pkg.productId, // 新增字段
         quantity: pkg.quantity,
         costPrice: pkg.costPrice,
         note: pkg.note,
@@ -165,6 +177,25 @@ watch(sellPrice, async (newPrices) => {
     }
   } catch (error) {
     console.error('同步sellPrices到数据库失败:', error);
+  }
+}, { deep: true });
+
+// 监听products变化，同步到数据库
+watch(products, async (newProducts) => {
+  if (isUpdatingFromDB) return;
+
+  try {
+    // 使用bulkPut进行增量更新
+    if (newProducts.length > 0) {
+      await db.products.bulkPut(newProducts);
+
+      // 触发同步到云端
+      for (const product of newProducts) {
+        syncService.pushToCloud('products', product).catch(console.error);
+      }
+    }
+  } catch (error) {
+    console.error('同步products到数据库失败:', error);
   }
 }, { deep: true });
 
@@ -327,6 +358,7 @@ export function useStore() {
     goodsList,
     salesHistory,
     sellPrice,
+    products,
     selectedDate,
     inventoryList,
     totalInventoryValue,

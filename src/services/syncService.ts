@@ -5,7 +5,7 @@ import { Package, Order } from '../types/domain';
 class SyncService {
   private isSyncing = false;
   
-  async pushToCloud(table: 'packages' | 'sales', data: any) {
+  async pushToCloud(table: 'packages' | 'sales' | 'products', data: any) {
     if (!isSupabaseConfigured) {
       console.warn('Supabase not configured, skipping sync');
       return;
@@ -37,6 +37,10 @@ class SyncService {
       } else if (table === 'sales') {
         result = await supabase
           .from('sales')
+          .upsert(userData, { onConflict: ['id'] });
+      } else if (table === 'products') {
+        result = await supabase
+          .from('products')
           .upsert(userData, { onConflict: ['id'] });
       }
 
