@@ -1,87 +1,123 @@
--- Supabase 数据库表结构定义
--- 用于 GoodsMaster 云端同步架构
+-- ============================================================
+-- 0. 变量定义 (请使用查找替换功能修改下面的 UUID)
+-- GLOBAL_USER_ID: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+-- ============================================================
 
--- 启用 Row Level Security (RLS)
+-- ============================================================
+-- 1. 彻底清理 (Drop Everything)
+-- ============================================================
+DROP TABLE IF EXISTS public.packages CASCADE;
+DROP TABLE IF EXISTS public.sales CASCADE;
+DROP TABLE IF EXISTS public.products CASCADE;
+
+-- ============================================================
+-- 2. 重建 Products 主表 (Master Data)
+-- ============================================================
+CREATE TABLE public.products (
+    id uuid PRIMARY KEY, -- 前端生成的 UUID
+    user_id uuid NOT NULL, -- 全局用户 ID
+    name text NOT NULL,
+    barcode text,
+    price numeric DEFAULT 0,
+    stock_warning integer DEFAULT 5,
+    category text,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    is_deleted boolean DEFAULT false
+);
+
+-- 开启 RLS
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+
+-- 创建索引
+CREATE INDEX idx_products_user ON public.products(user_id);
+CREATE INDEX idx_products_updated ON public.products(updated_at);
+
+-- ============================================================
+-- 3. 重建 Packages 表 (Transaction Data)
+-- ============================================================
+CREATE TABLE public.packages (
+    -- [关键修改] ID 类型改为 numeric 以兼容 JS 的随机小数 ID
+    id numeric PRIMARY KEY, 
+    
+    product_id uuid REFERENCES public.products(id), -- 关联主表
+    
+    -- 核心业务字段
+    batch_id text,
+    tracking text,
+    content text, -- 快照: 商品名
+    quantity integer DEFAULT 1,
+    cost_price numeric DEFAULT 0,
+    note text,
+    verified boolean DEFAULT false,
+    timestamp numeric NOT NULL, -- 同样改为 numeric
+    
+    -- 同步控制字段
+    user_id uuid NOT NULL,
+    updated_at timestamptz DEFAULT now(),
+    is_deleted boolean DEFAULT false
+);
+
+-- 开启 RLS
 ALTER TABLE public.packages ENABLE ROW LEVEL SECURITY;
+
+-- 创建索引
+CREATE INDEX idx_packages_user ON public.packages(user_id);
+CREATE INDEX idx_packages_updated ON public.packages(updated_at);
+
+-- ============================================================
+-- 4. 重建 Sales 表 (Transaction Data)
+-- ============================================================
+CREATE TABLE public.sales (
+    -- [关键修改] ID 类型改为 numeric
+    id numeric PRIMARY KEY,
+    
+    -- 核心业务字段
+    customer text,
+    total_amount numeric DEFAULT 0,
+    total_profit numeric DEFAULT 0,
+    items jsonb NOT NULL, -- 存储订单项详情
+    status text DEFAULT 'completed',
+    note text,
+    timestamp numeric NOT NULL,
+    
+    -- 同步控制字段
+    user_id uuid NOT NULL,
+    updated_at timestamptz DEFAULT now(),
+    is_deleted boolean DEFAULT false
+);
+
+-- 开启 RLS
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 
--- 创建 packages 表
-CREATE TABLE IF NOT EXISTS public.packages (
-  id BIGSERIAL PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  batch_id TEXT,
-  tracking TEXT,
-  content TEXT NOT NULL,
-  quantity INTEGER NOT NULL DEFAULT 0,
-  cost_price DECIMAL(10, 2),
-  note TEXT,
-  verified BOOLEAN DEFAULT FALSE,
-  timestamp TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  is_deleted BOOLEAN DEFAULT FALSE
-);
+-- 创建索引
+CREATE INDEX idx_sales_user ON public.sales(user_id);
+CREATE INDEX idx_sales_updated ON public.sales(updated_at);
 
--- 创建 sales 表
-CREATE TABLE IF NOT EXISTS public.sales (
-  id TEXT PRIMARY KEY,  -- 使用与本地相同的字符串ID
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  items JSONB NOT NULL,  -- 存储订单项的JSON数组
-  total_amount DECIMAL(10, 2) NOT NULL,
-  total_profit DECIMAL(10, 2) NOT NULL,
-  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  status TEXT NOT NULL DEFAULT 'completed',
-  note TEXT,
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  is_deleted BOOLEAN DEFAULT FALSE
-);
+-- ============================================================
+-- 5. 创建单租户安全策略 (Single-Tenant Policies)
+-- ============================================================
+-- [重要] 请确保这里的 UUID 与你 .env 文件一致
 
--- 创建索引以提高查询性能
-CREATE INDEX IF NOT EXISTS packages_user_id_idx ON public.packages(user_id);
-CREATE INDEX IF NOT EXISTS packages_updated_at_idx ON public.packages(updated_at);
-CREATE INDEX IF NOT EXISTS packages_verified_idx ON public.packages(verified);
-CREATE INDEX IF NOT EXISTS sales_user_id_idx ON public.sales(user_id);
-CREATE INDEX IF NOT EXISTS sales_updated_at_idx ON public.sales(updated_at);
-CREATE INDEX IF NOT EXISTS sales_timestamp_idx ON public.sales(timestamp);
+-- Products Policy
+CREATE POLICY "Global User Access" ON public.products
+FOR ALL TO anon
+USING (user_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')
+WITH CHECK (user_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
 
--- 创建 RLS 策略 - 用户只能访问自己的数据
-CREATE POLICY "Users can view own packages" ON public.packages
-  FOR SELECT USING (auth.uid() = user_id);
+-- Packages Policy
+CREATE POLICY "Global User Access" ON public.packages
+FOR ALL TO anon
+USING (user_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')
+WITH CHECK (user_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
 
-CREATE POLICY "Users can insert own packages" ON public.packages
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- Sales Policy
+CREATE POLICY "Global User Access" ON public.sales
+FOR ALL TO anon
+USING (user_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11')
+WITH CHECK (user_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
 
-CREATE POLICY "Users can update own packages" ON public.packages
-  FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own packages" ON public.packages
-  FOR DELETE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can view own sales" ON public.sales
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own sales" ON public.sales
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own sales" ON public.sales
-  FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own sales" ON public.sales
-  FOR DELETE USING (auth.uid() = user_id);
-
--- 创建更新时间触发器函数
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
--- 为表添加更新时间触发器
-CREATE TRIGGER update_packages_updated_at 
-    BEFORE UPDATE ON public.packages 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_sales_updated_at 
-    BEFORE UPDATE ON public.sales 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- ============================================================
+-- 6. 刷新 Schema 缓存
+-- ============================================================
+NOTIFY pgrst, 'reload schema';
