@@ -3,7 +3,7 @@ import { ref, reactive, computed, inject, nextTick, watch } from 'vue';
 import { useStore } from '../composables/useStore';
 import { syncService } from '../services/syncService';
 
-const { packages, goodsList } = useStore();
+const { packages, goodsList, deleteProduct } = useStore();
 const showToast = inject('showToast');
 const showDialog = inject('showDialog');
 
@@ -45,6 +45,11 @@ const deleteItem = (id) => {
     action: async () => {
       // 使用软删除替代直接splice
       await syncService.softDeleteRecord(id, 'packages');
+      // 更新内存状态
+      const index = packages.value.findIndex(p => p.id === id);
+      if (index !== -1) {
+        packages.value.splice(index, 1);
+      }
       showToast('已删除');
     }
   });

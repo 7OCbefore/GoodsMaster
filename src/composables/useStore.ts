@@ -15,6 +15,23 @@ const products = ref<Product[]>([]); // 新的商品主数据
 // 全局选中的日期 (用于 Dashboard 时间旅行)
 const selectedDate = ref<Date>(new Date());
 
+// --- 删除商品函数 ---
+const deleteProduct = async (id: string) => {
+  // 1. 数据库操作
+  await syncService.softDeleteRecord(id, 'products');
+  
+  // 2. 内存状态更新
+  // 从 products 数组中移除被删除的商品
+  const index = products.value.findIndex(p => p.id === id);
+  if (index !== -1) {
+    products.value.splice(index, 1);
+  }
+  
+  // 同时也需要从其他依赖于产品的数据结构中移除相关数据
+  // 例如，从 packages 中移除关联的产品
+  packages.value = packages.value.filter(p => p.productId !== id);
+};
+
 // 加载状态
 const isLoading = ref<boolean>(false);
 const hasLoaded = ref<boolean>(false);
@@ -370,6 +387,7 @@ export function useStore() {
     formatCurrency,
     refundOrder,
     updateOrderNote,
+    deleteProduct, // 导出删除商品函数
     isSameDay,
     // 新增的异步加载相关
     loadFromDB,
