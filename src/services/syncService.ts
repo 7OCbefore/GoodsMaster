@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
 import { db } from '../db';
 import type { Package, SalesOrder, Product } from '../types/domain';
+import type { DeletedRecord } from '../db/index';
 
 // 简单的 UUID 生成器
 function generateUUID() {
@@ -10,13 +11,19 @@ function generateUUID() {
   });
 }
 
+// 同步选项接口
+interface SyncOptions {
+  pruneLocallyDeleted: boolean; // true = 标准同步 (剪枝), false = 恢复模式
+  forceFullPull: boolean;       // true = 拉取所有云端数据, false = 仅增量
+}
+
 class SyncService {
   private isSyncing = false;
 
   /**
    * [核心修复] 聚合同步方法
    * 策略：先备份本地数据到云端 (Push)，再拉取云端最新数据 (Pull)
-   * 这保证了本地的新修改不会因为 Pull 操作的“清空重写”逻辑而丢失
+   * 这保证了本地的新修改不会因为 Pull 操作的"清空重写"逻辑而丢失
    */
   async sync() {
     if (this.isSyncing) return;
@@ -31,13 +38,8 @@ class SyncService {
     console.log('🔄 Starting Smart Sync...');
 
     try {
-      // 1. 先把本地数据安全地送上云端 (Backup/Push)
-      // 这一步包含了 "孤儿数据修复" 逻辑
-      await this.backupToCloudInternal(false); // false 表示不重复设置 isSyncing
-
-      // 2. 再拉取云端完整数据，刷新本地 (Pull/Refresh)
-      // 这一步会确保本地和云端完全一致
-      await this.pullFromCloudInternal(false);
+      // 执行标准同步（带剪枝）
+      await this.executeSync({ pruneLocallyDeleted: true, forceFullPull: false });
 
       console.log('✅ Sync completed successfully!');
     } catch (error) {
@@ -46,6 +48,28 @@ class SyncService {
     } finally {
       this.isSyncing = false;
     }
+  }
+
+  /**
+   * 执行同步 - 支持剪枝和恢复模式
+   * @param options 同步选项
+   */
+  async executeSync(options: SyncOptions) {
+    const tables = ['products', 'packages', 'sales']; // 需同步的表
+    
+    // 1. Push Upserts (始终执行)
+    await this.backupToCloudInternal(false); // false 表示不重复设置 isSyncing
+
+    // 2. Push Deletes (剪枝 - 条件执行)
+    if (options.pruneLocallyDeleted) {
+      await this.pushLocalDeletions();
+    }
+
+    // 3. Pull (拉取)
+    await this.pullCloudChanges(options.forceFullPull, options.pruneLocallyDeleted);
+    
+    // 4. Update Sync Timestamp
+    localStorage.setItem('last_sync_time', new Date().toISOString());
   }
 
   // --- 内部实现方法 (Internal Methods) ---
@@ -130,71 +154,164 @@ class SyncService {
     }
   }
 
-  // 内部拉取逻辑
-  private async pullFromCloudInternal(manageState = true) {
+  /**
+   * 推送删除逻辑 (Pruning Logic)
+   */
+  private async pushLocalDeletions() {
+    // 获取所有待删除记录
+    const pendingDeletes = await db.deleted_records.toArray();
+    if (pendingDeletes.length === 0) return;
+
+    // 按表分组
+    const groups: Record<string, DeletedRecord[]> = {};
+    for (const record of pendingDeletes) {
+      if (!groups[record.tableName]) {
+        groups[record.tableName] = [];
+      }
+      groups[record.tableName].push(record);
+    }
+
+    for (const [tableName, records] of Object.entries(groups)) {
+      const ids = records.map(r => r.id);
+      
+      // 调用 Supabase RPC 或 Update
+      // UPDATE tableName SET is_deleted = true, last_modified = now() WHERE id IN (ids)
+      const { error } = await supabase
+        .from(tableName)
+        .update({ is_deleted: true, updated_at: new Date().toISOString() })
+        .in('id', ids);
+
+      if (!error) {
+        // 只有云端确认标记为删除后，才移除本地墓碑
+        await db.deleted_records.bulkDelete(ids);
+      }
+    }
+  }
+
+  /**
+   * 拉取与恢复逻辑 (Pull & Restore Logic)
+   * @param forceFull 是否强制全量拉取
+   * @param isPruningMode 是否为剪枝模式
+   */
+  private async pullCloudChanges(forceFull: boolean, isPruningMode: boolean) {
     if (!supabase) return;
-    if (manageState) this.isSyncing = true;
+    
+    const user = await getCurrentUser();
+    const lastSync = localStorage.getItem('last_sync_time');
+    const tables = ['products', 'packages', 'sales'];
 
-    try {
-      const user = await getCurrentUser();
+    for (const tableName of tables) {
+      let query = supabase.from(tableName).select('*').eq('user_id', user.id).eq('is_deleted', false);
+      
+      // 如果不是强制全量，则仅拉取增量
+      if (!forceFull && lastSync) {
+        query = query.gt('updated_at', lastSync);
+      }
 
-      const [productsRes, packagesRes, salesRes] = await Promise.all([
-        supabase.from('products').select('*').eq('user_id', user.id).eq('is_deleted', false),
-        supabase.from('packages').select('*').eq('user_id', user.id).eq('is_deleted', false),
-        supabase.from('sales').select('*').eq('user_id', user.id).eq('is_deleted', false)
-      ]);
+      const { data, error } = await query;
+      if (error || !data) continue;
 
-      if (productsRes.error) throw productsRes.error;
-      if (packagesRes.error) throw packagesRes.error;
-      if (salesRes.error) throw salesRes.error;
-
-      await db.transaction('rw', db.products, db.packages, db.sales, async () => {
-        await db.products.clear();
-        await db.packages.clear();
-        await db.sales.clear();
-
-        if (productsRes.data?.length) {
-          await db.products.bulkAdd(productsRes.data as unknown as Product[]);
-        }
-
-        if (packagesRes.data?.length) {
-          const mappedPackages = packagesRes.data.map((row: any) => ({
-            id: Number(row.id),
-            productId: row.product_id, // 反向映射
-            batchId: row.batch_id,
-            tracking: row.tracking,
-            content: row.content,
-            quantity: row.quantity,
-            costPrice: row.cost_price,
-            note: row.note,
-            verified: row.verified,
-            timestamp: Number(row.timestamp),
-          }));
-          await db.packages.bulkAdd(mappedPackages as unknown as Package[]);
-        }
-
-        if (salesRes.data?.length) {
-          const mappedSales = salesRes.data.map((row: any) => ({
-            id: Number(row.id),
-            timestamp: Number(row.timestamp),
-            customer: row.customer,
-            totalAmount: row.total_amount,
-            totalProfit: row.total_profit,
-            items: row.items,
-            status: row.status,
-            note: row.note
-          }));
-          await db.sales.bulkAdd(mappedSales as unknown as SalesOrder[]);
+      await db.transaction('rw', db.table(tableName), db.deleted_records, async () => {
+        // 在剪枝模式下，直接覆盖数据
+        if (isPruningMode) {
+          // 清空本地表数据
+          await db.table(tableName).clear();
+          
+          // 插入云端数据
+          if (data.length > 0) {
+            if (tableName === 'products') {
+              await db.products.bulkAdd(data as unknown as Product[]);
+            } else if (tableName === 'packages') {
+              const mappedPackages = data.map((row: any) => ({
+                id: Number(row.id),
+                productId: row.product_id,
+                batchId: row.batch_id,
+                tracking: row.tracking,
+                content: row.content,
+                quantity: row.quantity,
+                costPrice: row.cost_price,
+                note: row.note,
+                verified: row.verified,
+                timestamp: Number(row.timestamp),
+              }));
+              await db.packages.bulkAdd(mappedPackages as unknown as Package[]);
+            } else if (tableName === 'sales') {
+              const mappedSales = data.map((row: any) => ({
+                id: Number(row.id),
+                timestamp: Number(row.timestamp),
+                customer: row.customer,
+                totalAmount: row.total_amount,
+                totalProfit: row.total_profit,
+                items: row.items,
+                status: row.status,
+                note: row.note
+              }));
+              await db.sales.bulkAdd(mappedSales as unknown as SalesOrder[]);
+            }
+          }
+        } else {
+          // 在恢复模式下，需要检查是否有恢复的数据
+          // 写入数据
+          if (data.length > 0) {
+            if (tableName === 'products') {
+              await db.products.bulkPut(data as unknown as Product[]);
+            } else if (tableName === 'packages') {
+              const mappedPackages = data.map((row: any) => ({
+                id: Number(row.id),
+                productId: row.product_id,
+                batchId: row.batch_id,
+                tracking: row.tracking,
+                content: row.content,
+                quantity: row.quantity,
+                costPrice: row.cost_price,
+                note: row.note,
+                verified: row.verified,
+                timestamp: Number(row.timestamp),
+              }));
+              await db.packages.bulkPut(mappedPackages as unknown as Package[]);
+            } else if (tableName === 'sales') {
+              const mappedSales = data.map((row: any) => ({
+                id: Number(row.id),
+                timestamp: Number(row.timestamp),
+                customer: row.customer,
+                totalAmount: row.total_amount,
+                totalProfit: row.total_profit,
+                items: row.items,
+                status: row.status,
+                note: row.note
+              }));
+              await db.sales.bulkPut(mappedSales as unknown as SalesOrder[]);
+            }
+          }
+          
+          // 检查这些数据是否在"待删除列表"中 (如果是，说明是误删恢复)
+          const restoredIds = data.map((d: any) => d.id);
+          // 从 deleted_records 中移除这些 ID，防止下次同步时又把它们删了
+          await db.deleted_records
+            .where('tableName').equals(tableName)
+            .and(r => restoredIds.includes(r.id))
+            .delete();
         }
       });
-    } finally {
-      if (manageState) this.isSyncing = false;
     }
+  }
+
+  // 内部拉取逻辑 - 保持原有功能向后兼容
+  private async pullFromCloudInternal(manageState = true) {
+    return this.pullCloudChanges(false, true);
   }
 
   // 公开的拉取方法
   async pullFromCloud() {
     return this.pullFromCloudInternal(true);
+  }
+
+  /**
+   * 从云端恢复数据（不执行剪枝操作）
+   */
+  async recoverFromCloud() {
+    // 执行恢复模式同步（不剪枝 + 恢复）
+    await this.executeSync({ pruneLocallyDeleted: false, forceFullPull: true });
   }
 
   // 内部备份逻辑 (包含自动修复孤儿数据)
@@ -282,6 +399,23 @@ class SyncService {
   // 公开的备份方法
   async backupToCloud() {
     return this.backupToCloudInternal(true);
+  }
+
+  /**
+   * 软删除记录（替代直接的物理删除）
+   * @param id 记录ID
+   * @param tableName 表名
+   */
+  async softDeleteRecord(id: string, tableName: string) {
+    // 记录墓碑（用于同步剪枝）
+    await db.deleted_records.put({
+      id,
+      tableName,
+      deletedAt: Date.now()
+    });
+    
+    // 物理删除本地业务数据（为了节省本地空间和UI逻辑）
+    await db.table(tableName).delete(id);
   }
 }
 

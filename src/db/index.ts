@@ -25,6 +25,13 @@ export interface ProductRecord extends Product {
   // 继承Product接口的所有字段
 }
 
+// 墓碑记录接口，用于追踪本地删除操作
+export interface DeletedRecord {
+  id: string; // 被删除记录的 UUID
+  tableName: string; // 'products' | 'packages' | 'sales'
+  deletedAt: number; // 删除时间戳
+}
+
 // 快照表（未来扩展用）
 export interface SnapshotRecord {
   id?: number;
@@ -40,6 +47,7 @@ class GoodsMasterDB extends Dexie {
   sellPrices!: Dexie.Table<SellPriceRecord, number>; // 主键为自增id
   products!: Dexie.Table<ProductRecord, string>; // 主键为string类型的id (UUID)
   snapshots!: Dexie.Table<SnapshotRecord, number>; // 主键为自增id
+  deleted_records!: Dexie.Table<DeletedRecord, string>; // 主键为string类型的id
 
   constructor() {
     super('GoodsMasterDB');
@@ -93,6 +101,24 @@ class GoodsMasterDB extends Dexie {
       // 添加products表，id为主键，name和updated_at索引用于查询和同步
       products: 'id, name, updated_at, user_id',
       // packages表保持不变，productId字段不加索引（可选字段）
+      packages: 'id, batchId, timestamp, verified, updated_at',
+      // sales表保持不变
+      sales: 'id, timestamp, status, updated_at',
+      // goods表保持不变（向后兼容）
+      goods: '++id, &name',
+      // sellPrices表保持不变（向后兼容）
+      sellPrices: '++id, goodsName',
+      // snapshots表保持不变
+      snapshots: '++id, date, type'
+    });
+
+    // 版本4：添加删除记录追踪表
+    this.version(4).stores({
+      // 添加deleted_records表，用于追踪本地删除操作
+      deleted_records: 'id, tableName, deletedAt',
+      // products表保持不变
+      products: 'id, name, updated_at, user_id',
+      // packages表保持不变
       packages: 'id, batchId, timestamp, verified, updated_at',
       // sales表保持不变
       sales: 'id, timestamp, status, updated_at',

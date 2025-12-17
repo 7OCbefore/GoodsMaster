@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, computed, inject, nextTick, watch } from 'vue';
 import { useStore } from '../composables/useStore';
+import { syncService } from '../services/syncService';
 
 const { packages, goodsList } = useStore();
 const showToast = inject('showToast');
@@ -39,11 +40,11 @@ const toggleVerify = (pkg) => {
 const deleteItem = (id) => {
   showDialog({
     title: '删除记录',
-    content: '此操作不可恢复，确定删除？',
+    content: '此操作将在本地删除并标记为已删除，可通过云端恢复。确定删除？',
     isDanger: true,
-    action: () => {
-      const idx = packages.value.findIndex(p => p.id === id);
-      if (idx > -1) packages.value.splice(idx, 1);
+    action: async () => {
+      // 使用软删除替代直接splice
+      await syncService.softDeleteRecord(id, 'packages');
       showToast('已删除');
     }
   });

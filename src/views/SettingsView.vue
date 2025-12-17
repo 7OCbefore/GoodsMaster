@@ -77,6 +77,18 @@ const syncWithCloud = async () => {
   }
 };
 
+// 从云端恢复数据功能
+const recoverFromCloud = async () => {
+  try {
+    showToast('正在从云端恢复数据...', 'info');
+    await syncService.recoverFromCloud();
+    showToast('数据已从云端恢复');
+  } catch (error) {
+    console.error('云端恢复失败:', error);
+    showToast('云端恢复失败: ' + error.message, 'error');
+  }
+};
+
 const backupToCloud = async () => {
   try {
     showToast('正在备份数据到云端...', 'info');
@@ -132,6 +144,19 @@ const backupToCloud = async () => {
           <div>
             <div class="font-bold text-primary text-sm">备份到云端</div>
             <div class="text-[10px] text-gray-400">将本地数据上传到云端</div>
+          </div>
+        </div>
+        <i class="ph-bold ph-caret-right text-gray-300"></i>
+      </div>
+
+      <div @click="recoverFromCloud" class="p-5 border-b border-gray-50 flex items-center justify-between active:bg-gray-50 transition-colors cursor-pointer">
+        <div class="flex items-center gap-4">
+          <div class="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
+            <i class="ph-bold ph-cloud-warning text-xl"></i>
+          </div>
+          <div>
+            <div class="font-bold text-primary text-sm">从云端恢复</div>
+            <div class="text-[10px] text-gray-400">恢复被误删的数据</div>
           </div>
         </div>
         <i class="ph-bold ph-caret-right text-gray-300"></i>
