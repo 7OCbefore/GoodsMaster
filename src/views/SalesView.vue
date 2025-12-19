@@ -4,12 +4,13 @@ import { useVirtualizer } from '@tanstack/vue-virtual';
 import { useStore } from '../composables/useStore';
 import VirtualNumPad from '../components/VirtualNumPad.vue';
 
-const { 
-  inventoryList, 
-  sellPrice, 
-  formatCurrency, 
-  salesHistory, 
-  refundOrder, 
+const {
+  inventoryList,
+  sellPrice,
+  formatCurrency,
+  salesHistory,
+  createOrder,
+  refundOrder,
   updateOrderNote,
   packages // 需要访问packages来添加临时库存
 } = useStore();
@@ -336,7 +337,7 @@ async function checkout() {
 }
 
 // 实际执行开单操作
-function completeCheckout() {
+async function completeCheckout() {
   const order = {
     id: Date.now(),
     timestamp: Date.now(),
@@ -347,11 +348,18 @@ function completeCheckout() {
     status: 'completed',
     note: ''
   };
-  salesHistory.value.unshift(order);
-  showToast('开单成功', 'success');
-  cart.value = [];
-  customerName.value = '';
-  isCartOpen.value = false;
+
+  // 使用事务性创建订单
+  const result = await createOrder(order);
+
+  if (result.success) {
+    showToast('开单成功', 'success');
+    cart.value = [];
+    customerName.value = '';
+    isCartOpen.value = false;
+  } else {
+    showToast(`开单失败: ${result.error}`, 'error');
+  }
 }
 
 // 复制文本到剪贴板

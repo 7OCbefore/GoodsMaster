@@ -4,6 +4,9 @@ import { Package, Order, InventoryItem, DailyStats, ChartData, Goods, Product } 
 import { db } from '../db/index';
 import { syncService } from '../services/syncService';
 import { migrateDataStructure } from '../db/migrateToProducts';
+import { wacCache } from '../db/wacCache';
+import { operationLogService } from '../services/operationLogService';
+import { transactionService } from '../services/transactionService';
 
 // --- 单例状态 ---
 const packages = ref<Package[]>([]);
@@ -116,8 +119,13 @@ watch(packages, async (newPackages, oldPackages) => {
 
     // 找出需要删除的id
     const idsToDelete = Array.from(oldIds).filter(id => !newIds.has(id));
+
+    // 记录删除操作日志
     if (idsToDelete.length > 0) {
       await db.packages.bulkDelete(idsToDelete);
+      for (const id of idsToDelete) {
+        await operationLogService.logOperation('packages', id, 'DELETE');
+      }
     }
 
     // 更新或插入所有新记录
@@ -135,12 +143,21 @@ watch(packages, async (newPackages, oldPackages) => {
         timestamp: pkg.timestamp
       }));
       await db.packages.bulkPut(records);
-      
+
+      // 记录操作日志
+      for (const pkg of newPackages) {
+        const operation = oldIds.has(pkg.id!) ? 'UPDATE' : 'INSERT';
+        await operationLogService.logOperation('packages', pkg.id!, operation, pkg);
+      }
+
       // 触发同步到云端
       for (const pkg of newPackages) {
         syncService.pushToCloud('packages', pkg).catch(console.error);
       }
     }
+
+    // 失效WAC缓存（packages变化影响库存计算）
+    wacCache.invalidate();
   } catch (error) {
     console.error('同步packages到数据库失败:', error);
   }
@@ -155,12 +172,20 @@ watch(salesHistory, async (newSales) => {
     // 注意：这种方法不会删除数据库中已删除的订单（销售订单通常不会被删除）
     if (newSales.length > 0) {
       await db.sales.bulkPut(newSales);
-      
+
+      // 记录操作日志
+      for (const sale of newSales) {
+        await operationLogService.logOperation('sales', sale.id, 'INSERT', sale);
+      }
+
       // 触发同步到云端
       for (const sale of newSales) {
         syncService.pushToCloud('sales', sale).catch(console.error);
       }
     }
+
+    // 失效WAC缓存（sales变化影响库存计算）
+    wacCache.invalidate();
   } catch (error) {
     console.error('同步sales到数据库失败:', error);
   }
@@ -206,6 +231,11 @@ watch(products, async (newProducts) => {
     if (newProducts.length > 0) {
       await db.products.bulkPut(newProducts);
 
+      // 记录操作日志
+      for (const product of newProducts) {
+        await operationLogService.logOperation('products', product.id, 'INSERT', product);
+      }
+
       // 触发同步到云端
       for (const product of newProducts) {
         syncService.pushToCloud('products', product).catch(console.error);
@@ -234,17 +264,25 @@ export function useStore() {
            date1.getDate() === date2.getDate();
   };
 
-  // --- 库存核心算法 (WAC) ---
+  // --- 库存核心算法 (WAC) - 带缓存优化 ---
   const inventoryList = computed<InventoryItem[]>(() => {
+    // 尝试从缓存获取
+    const cached = wacCache.get(packages.value, salesHistory.value);
+    if (cached) {
+      return cached;
+    }
+
+    // 缓存未命中，执行WAC计算
+    const startTime = performance.now();
     const map: Record<string, { name: string; quantity: number; totalCost: Decimal }> = {};
-    
+
     // 1. 进货累加
     packages.value.forEach(p => {
       if (!p.verified) return;
       const name = (p.content || '').trim();
       if (!name) return;
       if (!map[name]) map[name] = { name, quantity: 0, totalCost: new Decimal(0) };
-      
+
       const qty = new Decimal(p.quantity || 0);
       const cost = new Decimal(p.costPrice || 0);
       map[name].quantity = qty.add(map[name].quantity).toNumber();
@@ -267,7 +305,8 @@ export function useStore() {
       });
     });
 
-    return Object.values(map)
+    // 计算结果
+    const result = Object.values(map)
       .filter(i => i.quantity >= 0) // 允许显示0库存，方便补货
       .map(i => ({
         name: i.name,
@@ -275,6 +314,19 @@ export function useStore() {
         averageCost: i.quantity > 0 ? i.totalCost.dividedBy(i.quantity).toNumber() : 0
       }))
       .sort((a, b) => b.quantity - a.quantity);
+
+    // 存入缓存
+    wacCache.set(packages.value, salesHistory.value, result);
+
+    // 性能监控（开发环境）
+    if (process.env.NODE_ENV === 'development') {
+      const endTime = performance.now();
+      if (endTime - startTime > 10) { // 超过10ms记录
+        console.log(`⏱️ WAC计算耗时: ${(endTime - startTime).toFixed(2)}ms (缓存未命中)`);
+      }
+    }
+
+    return result;
   });
 
   // --- 统计数据 ---
@@ -360,9 +412,37 @@ export function useStore() {
   );
 
   // --- 订单操作 ---
-  const refundOrder = (id: string): void => {
-    const order = salesHistory.value.find(o => o.id === id);
-    if (order) order.status = 'refunded';
+  const createOrder = async (order: Order): Promise<{ success: boolean; error?: string }> => {
+    const result = await transactionService.createSalesOrderAtomic(order);
+
+    if (result.success && result.data) {
+      // 添加到内存状态
+      salesHistory.value.unshift(result.data);
+      return { success: true };
+    } else {
+      return {
+        success: false,
+        error: result.error?.message || '创建订单失败'
+      };
+    }
+  };
+
+  const refundOrder = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    const result = await transactionService.refundOrderAtomic(id);
+
+    if (result.success && result.data) {
+      // 更新内存状态
+      const index = salesHistory.value.findIndex(o => o.id === id);
+      if (index !== -1) {
+        salesHistory.value[index] = result.data;
+      }
+      return { success: true };
+    } else {
+      return {
+        success: false,
+        error: result.error?.message || '退款失败'
+      };
+    }
   };
 
   const updateOrderNote = (id: string, note: string): void => {
@@ -385,6 +465,7 @@ export function useStore() {
     lowStockItems,
     chartData,
     formatCurrency,
+    createOrder,
     refundOrder,
     updateOrderNote,
     deleteProduct, // 导出删除商品函数

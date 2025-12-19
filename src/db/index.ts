@@ -40,6 +40,18 @@ export interface SnapshotRecord {
   data: unknown; // 快照数据
 }
 
+// 操作日志表（用于精确同步）
+export interface OperationLog {
+  id: string; // UUID
+  table: string; // 表名：'packages' | 'products' | 'sales'
+  recordId: string; // 记录ID
+  operation: 'INSERT' | 'UPDATE' | 'DELETE'; // 操作类型
+  timestamp: number; // 操作时间戳
+  checksum: string; // 数据校验和（防篡改）
+  user_id?: string; // 用户ID（多租户支持）
+  data?: any; // 操作时的数据快照（可选，用于回滚）
+}
+
 class GoodsMasterDB extends Dexie {
   packages!: Dexie.Table<PackageRecord, string>; // 主键为string类型的id
   sales!: Dexie.Table<OrderRecord, string>; // 主键为string类型的id
@@ -48,6 +60,7 @@ class GoodsMasterDB extends Dexie {
   products!: Dexie.Table<ProductRecord, string>; // 主键为string类型的id (UUID)
   snapshots!: Dexie.Table<SnapshotRecord, number>; // 主键为自增id
   deleted_records!: Dexie.Table<DeletedRecord, string>; // 主键为string类型的id
+  operations!: Dexie.Table<OperationLog, string>; // 主键为string类型的id (UUID)
 
   constructor() {
     super('GoodsMasterDB');
@@ -127,6 +140,59 @@ class GoodsMasterDB extends Dexie {
       // sellPrices表保持不变（向后兼容）
       sellPrices: '++id, goodsName',
       // snapshots表保持不变
+      snapshots: '++id, date, type'
+    });
+
+    // 版本5：Schema索引优化 - 提升查询性能
+    this.version(5).stores({
+      // 优化packages表：添加productId索引和复合索引
+      // [productId+timestamp]: 支持按商品ID和时间范围查询
+      // [verified+timestamp]: 支持筛选已验证记录并按时间排序
+      packages: 'id, productId, batchId, timestamp, verified, updated_at, [productId+timestamp], [verified+timestamp]',
+      // 优化products表：添加复合索引
+      // [user_id+updated_at]: 支持多租户下的高效查询
+      products: 'id, name, updated_at, user_id, [user_id+updated_at]',
+      // 优化sales表：添加复合索引
+      // [timestamp+status]: 支持按状态和时间范围查询
+      sales: 'id, timestamp, status, updated_at, [timestamp+status]',
+      // 其他表保持不变
+      goods: '++id, &name',
+      sellPrices: '++id, goodsName',
+      deleted_records: 'id, tableName, deletedAt',
+      snapshots: '++id, date, type'
+    }).upgrade((transaction) => {
+      // 升级到版本5时，为现有数据添加缺失的索引字段
+      return Promise.all([
+        // 为packages表添加productId索引（如果缺失）
+        transaction.table('packages').toCollection().modify(pkg => {
+          if (!pkg.productId) {
+            pkg.productId = undefined; // 保持为undefined直到数据修复
+          }
+        }),
+        // 为products表确保user_id字段存在
+        transaction.table('products').toCollection().modify(product => {
+          if (!product.user_id) {
+            product.user_id = 'default-user'; // 为现有数据设置默认用户ID
+          }
+        })
+      ]);
+    });
+
+    // 版本6：操作日志表 - 支持精确同步
+    this.version(6).stores({
+      // 新增operations表：支持基于操作日志的精确同步
+      // id: UUID主键
+      // table: 表名索引，用于快速查询特定表的操作
+      // [table+timestamp]: 复合索引，支持按表和时间查询操作历史
+      // [table+recordId]: 复合索引，支持查询特定记录的操作历史
+      operations: 'id, table, recordId, timestamp, [table+timestamp], [table+recordId]',
+      // 其他表保持不变
+      packages: 'id, productId, batchId, timestamp, verified, updated_at, [productId+timestamp], [verified+timestamp]',
+      products: 'id, name, updated_at, user_id, [user_id+updated_at]',
+      sales: 'id, timestamp, status, updated_at, [timestamp+status]',
+      goods: '++id, &name',
+      sellPrices: '++id, goodsName',
+      deleted_records: 'id, tableName, deletedAt',
       snapshots: '++id, date, type'
     });
   }
