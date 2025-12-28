@@ -3,6 +3,7 @@ import { ref, computed, inject, onMounted } from 'vue';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import { useStore } from '../composables/useStore';
 import VirtualNumPad from '../components/VirtualNumPad.vue';
+import { createUuid } from '../utils/uuid';
 
 const {
   inventoryList,
@@ -266,7 +267,7 @@ async function performJITCorrection(item, requiredQuantity) {
   
   // 创建一个临时的进货记录
   const tempPackage = {
-    id: Math.random() + Date.now(),
+    id: createUuid(),
     batchId: `jit_${Date.now()}`,
     tracking: `JIT_ADJUST_${Date.now()}`,
     content: item.name,
@@ -339,7 +340,7 @@ async function checkout() {
 // 实际执行开单操作
 async function completeCheckout() {
   const order = {
-    id: Date.now(),
+    id: createUuid(),
     timestamp: Date.now(),
     customer: customerName.value,
     totalAmount: cartTotal.value,

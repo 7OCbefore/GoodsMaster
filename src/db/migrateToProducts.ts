@@ -1,5 +1,6 @@
 import { db } from './index';
 import { Product, Package, Order } from '../types/domain';
+import { createUuid } from '../utils/uuid';
 
 /**
  * 迁移到Product主数据模型
@@ -50,7 +51,7 @@ export async function migrateDataStructure(): Promise<void> {
     const productNameToId = new Map<string, string>();
 
     for (const name of allGoodsNames) {
-      const id = crypto.randomUUID();
+      const id = createUuid();
       const price = priceMap.get(name) || 0; // 默认价格为0，后续可手动设置
 
       const product: Product = {

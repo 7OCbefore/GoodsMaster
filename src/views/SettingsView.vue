@@ -3,11 +3,13 @@ import { ref, inject, onMounted } from 'vue';
 import { useStore } from '../composables/useStore';
 import { syncService } from '../services/syncService';
 import { useRouter } from 'vue-router';
+import { createUuid } from '../utils/uuid';
 
 const { resetDatabase, exportBackup } = useStore();
 const router = useRouter();
 const showToast = inject('showToast') as (msg: string, type?: 'success' | 'error' | 'warning') => void;
 const showDialog = inject('showDialog') as (options: any) => void;
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const lastSyncTime = ref<string>('从未同步');
 const isSyncing = ref(false);
@@ -114,12 +116,23 @@ const handleImport = (e: Event) => {
               if (!p.batchId) {
                 p.batchId = `FIX_${p.timestamp}_${p.content}`; 
               }
+
+              if (!p.id || !uuidRegex.test(String(p.id))) {
+                p.id = createUuid();
+              }
             });
             // ------------------
             packages.value = data.packages;
           }
           if (data.goodsList) goodsList.value = data.goodsList;
-          if (data.salesHistory) salesHistory.value = data.salesHistory;
+          if (data.salesHistory) {
+            data.salesHistory.forEach((order: any) => {
+              if (!order.id || !uuidRegex.test(String(order.id))) {
+                order.id = createUuid();
+              }
+            });
+            salesHistory.value = data.salesHistory;
+          }
           if (data.sellPrice) sellPrice.value = data.sellPrice;
           showToast('数据已恢复', 'success');
         }

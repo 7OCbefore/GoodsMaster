@@ -1,15 +1,8 @@
 import { supabase, isSupabaseConfigured, getCurrentUser } from './supabase';
 import { db } from '../db';
-import type { Package, SalesOrder, Product } from '../types/domain';
+import type { Package, Order, Product } from '../types/domain';
 import type { DeletedRecord } from '../db/index';
-
-// 简单的 UUID 生成器
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
+import { createUuid } from '../utils/uuid';
 
 // 同步选项接口
 interface SyncOptions {
@@ -55,7 +48,7 @@ class SyncService {
    * @param options 同步选项
    */
   async executeSync(options: SyncOptions) {
-    const tables = ['products', 'packages', 'sales']; // 需同步的表
+    const forceFullPull = options.pruneLocallyDeleted ? true : options.forceFullPull;
     
     // 1. Push Upserts (始终执行)
     await this.backupToCloudInternal(false); // false 表示不重复设置 isSyncing
@@ -66,7 +59,7 @@ class SyncService {
     }
 
     // 3. Pull (拉取)
-    await this.pullCloudChanges(options.forceFullPull, options.pruneLocallyDeleted);
+    await this.pullCloudChanges(forceFullPull, options.pruneLocallyDeleted);
     
     // 4. Update Sync Timestamp
     localStorage.setItem('last_sync_time', new Date().toISOString());
@@ -103,7 +96,7 @@ class SyncService {
 
         payload = {
           ...commonFields,
-          id: pkg.id, // numeric
+          id: pkg.id, // uuid
           product_id: pkg.productId, // snake_case 映射
           batch_id: pkg.batchId,
           tracking: pkg.tracking,
@@ -116,7 +109,7 @@ class SyncService {
         };
       } else if (table === 'sales') {
         tableName = 'sales';
-        const sale = data as SalesOrder;
+        const sale = data as Order;
         payload = {
           ...commonFields,
           id: sale.id,
@@ -158,6 +151,8 @@ class SyncService {
    * 推送删除逻辑 (Pruning Logic)
    */
   private async pushLocalDeletions() {
+    if (!supabase) return;
+
     // 获取所有待删除记录
     const pendingDeletes = await db.deleted_records.toArray();
     if (pendingDeletes.length === 0) return;
@@ -220,10 +215,22 @@ class SyncService {
           // 插入云端数据
           if (data.length > 0) {
             if (tableName === 'products') {
-              await db.products.bulkAdd(data as unknown as Product[]);
+              const mappedProducts = data.map((row: any) => ({
+                id: row.id,
+                user_id: row.user_id,
+                name: row.name,
+                barcode: row.barcode,
+                price: row.price,
+                stock_warning: row.stock_warning,
+                category: row.category,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                is_deleted: row.is_deleted
+              }));
+              await db.products.bulkAdd(mappedProducts as unknown as Product[]);
             } else if (tableName === 'packages') {
               const mappedPackages = data.map((row: any) => ({
-                id: Number(row.id),
+                id: row.id,
                 productId: row.product_id,
                 batchId: row.batch_id,
                 tracking: row.tracking,
@@ -237,7 +244,7 @@ class SyncService {
               await db.packages.bulkAdd(mappedPackages as unknown as Package[]);
             } else if (tableName === 'sales') {
               const mappedSales = data.map((row: any) => ({
-                id: Number(row.id),
+                id: row.id,
                 timestamp: Number(row.timestamp),
                 customer: row.customer,
                 totalAmount: row.total_amount,
@@ -246,7 +253,7 @@ class SyncService {
                 status: row.status,
                 note: row.note
               }));
-              await db.sales.bulkAdd(mappedSales as unknown as SalesOrder[]);
+              await db.sales.bulkAdd(mappedSales as unknown as Order[]);
             }
           }
         } else {
@@ -254,10 +261,22 @@ class SyncService {
           // 写入数据
           if (data.length > 0) {
             if (tableName === 'products') {
-              await db.products.bulkPut(data as unknown as Product[]);
+              const mappedProducts = data.map((row: any) => ({
+                id: row.id,
+                user_id: row.user_id,
+                name: row.name,
+                barcode: row.barcode,
+                price: row.price,
+                stock_warning: row.stock_warning,
+                category: row.category,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                is_deleted: row.is_deleted
+              }));
+              await db.products.bulkPut(mappedProducts as unknown as Product[]);
             } else if (tableName === 'packages') {
               const mappedPackages = data.map((row: any) => ({
-                id: Number(row.id),
+                id: row.id,
                 productId: row.product_id,
                 batchId: row.batch_id,
                 tracking: row.tracking,
@@ -271,7 +290,7 @@ class SyncService {
               await db.packages.bulkPut(mappedPackages as unknown as Package[]);
             } else if (tableName === 'sales') {
               const mappedSales = data.map((row: any) => ({
-                id: Number(row.id),
+                id: row.id,
                 timestamp: Number(row.timestamp),
                 customer: row.customer,
                 totalAmount: row.total_amount,
@@ -280,7 +299,7 @@ class SyncService {
                 status: row.status,
                 note: row.note
               }));
-              await db.sales.bulkPut(mappedSales as unknown as SalesOrder[]);
+              await db.sales.bulkPut(mappedSales as unknown as Order[]);
             }
           }
           
@@ -298,7 +317,7 @@ class SyncService {
 
   // 内部拉取逻辑 - 保持原有功能向后兼容
   private async pullFromCloudInternal(manageState = true) {
-    return this.pullCloudChanges(false, true);
+    return this.pullCloudChanges(true, true);
   }
 
   // 公开的拉取方法
@@ -351,7 +370,7 @@ class SyncService {
 
           if (!foundId) {
             // 自动创建新商品
-            const newId = generateUUID();
+            const newId = createUuid();
             const newProduct: Product = {
               id: newId,
               name: pkg.content,

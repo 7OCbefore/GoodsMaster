@@ -12,8 +12,9 @@ export interface Database {
     Tables: {
       packages: {
         Row: {
-          id: number
+          id: string
           user_id: string
+          product_id: string | null
           batch_id: string | null
           tracking: string | null
           content: string | null
@@ -26,8 +27,9 @@ export interface Database {
           is_deleted: boolean
         }
         Insert: {
-          id?: number
+          id?: string
           user_id: string
+          product_id?: string | null
           batch_id?: string | null
           tracking?: string | null
           content?: string | null
@@ -40,8 +42,9 @@ export interface Database {
           is_deleted?: boolean
         }
         Update: {
-          id?: number
+          id?: string
           user_id?: string
+          product_id?: string | null
           batch_id?: string | null
           tracking?: string | null
           content?: string | null
@@ -88,6 +91,44 @@ export interface Database {
           timestamp?: string
           status?: string
           note?: string | null
+          updated_at?: string
+          is_deleted?: boolean
+        }
+      }
+      products: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          barcode: string | null
+          price: number
+          stock_warning: number
+          category: string | null
+          created_at: string
+          updated_at: string
+          is_deleted: boolean
+        }
+        Insert: {
+          id: string
+          user_id: string
+          name: string
+          barcode?: string | null
+          price?: number
+          stock_warning?: number
+          category?: string | null
+          created_at?: string
+          updated_at?: string
+          is_deleted?: boolean
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          barcode?: string | null
+          price?: number
+          stock_warning?: number
+          category?: string | null
+          created_at?: string
           updated_at?: string
           is_deleted?: boolean
         }

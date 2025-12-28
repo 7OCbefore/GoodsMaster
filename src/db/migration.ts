@@ -1,5 +1,6 @@
 import { db } from './index';
 import { Package, Order } from '../types/domain';
+import { createUuid } from '../utils/uuid';
 
 /**
  * 从LocalStorage迁移数据到IndexedDB
@@ -41,7 +42,7 @@ export async function migrateFromLocalStorage(): Promise<void> {
       if (packages.length > 0) {
         const packageRecords = packages.map(pkg => {
           // 确保每个package都有id，如果没有则生成一个
-          const id = pkg.id || generateId();
+          const id = pkg.id || createUuid();
           return { ...pkg, id };
         });
         await db.packages.bulkAdd(packageRecords);
@@ -53,7 +54,11 @@ export async function migrateFromLocalStorage(): Promise<void> {
     if (salesHistoryJson) {
       const sales: Order[] = JSON.parse(salesHistoryJson);
       if (sales.length > 0) {
-        await db.sales.bulkAdd(sales);
+        const salesWithIds = sales.map((sale) => ({
+          ...sale,
+          id: sale.id || createUuid()
+        }));
+        await db.sales.bulkAdd(salesWithIds);
         console.log(`迁移 ${sales.length} 条销售记录`);
       }
     }
@@ -94,9 +99,50 @@ export async function migrateFromLocalStorage(): Promise<void> {
   }
 }
 
-/**
- * 生成唯一ID (简化版，使用时间戳加随机数)
- */
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export async function normalizeRecordIds(): Promise<void> {
+  const migrationKey = 'migration_uuid_v1';
+  if (localStorage.getItem(migrationKey)) {
+    return;
+  }
+
+  const [packages, sales] = await Promise.all([
+    db.packages.toArray(),
+    db.sales.toArray()
+  ]);
+
+  await db.transaction('rw', db.packages, db.sales, db.operations, db.deleted_records, async () => {
+    for (const pkg of packages) {
+      if (!uuidRegex.test(pkg.id)) {
+        const newId = createUuid();
+        const updated = { ...pkg, id: newId };
+        await db.packages.delete(pkg.id);
+        await db.packages.put(updated);
+        await db.operations
+          .where('recordId')
+          .equals(pkg.id)
+          .modify({ recordId: newId });
+      }
+    }
+
+    for (const sale of sales) {
+      if (!uuidRegex.test(sale.id)) {
+        const newId = createUuid();
+        const updated = { ...sale, id: newId };
+        await db.sales.delete(sale.id);
+        await db.sales.put(updated);
+        await db.operations
+          .where('recordId')
+          .equals(sale.id)
+          .modify({ recordId: newId });
+      }
+    }
+    await db.deleted_records
+      .filter(record => !uuidRegex.test(record.id))
+      .delete();
+  });
+
+  localStorage.removeItem('last_sync_time');
+  localStorage.setItem(migrationKey, new Date().toISOString());
 }

@@ -2,6 +2,7 @@
 import { ref, reactive, computed, inject, nextTick, watch } from 'vue';
 import { useStore } from '../composables/useStore';
 import { syncService } from '../services/syncService';
+import { createUuid } from '../utils/uuid';
 
 const { packages, goodsList, deleteProduct } = useStore();
 const showToast = inject('showToast');
@@ -235,7 +236,7 @@ const confirmBatchAdd = () => {
 
   batchList.value.forEach(code => {
     packages.value.unshift({
-      id: Math.random() + Date.now(),
+      id: createUuid(),
       batchId,
       tracking: code,
       content: form.content,

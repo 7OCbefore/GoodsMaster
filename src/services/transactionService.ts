@@ -6,6 +6,7 @@
 import { db } from '../db/index';
 import { operationLogService } from './operationLogService';
 import { Package, Order, Product } from '../types/domain';
+import { createUuid } from '../utils/uuid';
 
 /**
  * 事务结果
@@ -359,7 +360,7 @@ class TransactionService {
    * 生成ID
    */
   private generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    return createUuid();
   }
 
   /**

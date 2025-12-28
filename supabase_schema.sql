@@ -37,8 +37,7 @@ CREATE INDEX idx_products_updated ON public.products(updated_at);
 -- 3. 重建 Packages 表 (Transaction Data)
 -- ============================================================
 CREATE TABLE public.packages (
-    -- [关键修改] ID 类型改为 numeric 以兼容 JS 的随机小数 ID
-    id numeric PRIMARY KEY, 
+    id uuid PRIMARY KEY,
     
     product_id uuid REFERENCES public.products(id), -- 关联主表
     
@@ -50,7 +49,7 @@ CREATE TABLE public.packages (
     cost_price numeric DEFAULT 0,
     note text,
     verified boolean DEFAULT false,
-    timestamp numeric NOT NULL, -- 同样改为 numeric
+    timestamp numeric NOT NULL,
     
     -- 同步控制字段
     user_id uuid NOT NULL,
@@ -69,8 +68,7 @@ CREATE INDEX idx_packages_updated ON public.packages(updated_at);
 -- 4. 重建 Sales 表 (Transaction Data)
 -- ============================================================
 CREATE TABLE public.sales (
-    -- [关键修改] ID 类型改为 numeric
-    id numeric PRIMARY KEY,
+    id uuid PRIMARY KEY,
     
     -- 核心业务字段
     customer text,

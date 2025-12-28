@@ -10,6 +10,7 @@ export interface Order {
   id: string;
   timestamp: number;
   items: OrderItem[];
+  customer?: string;
   totalAmount: number;
   totalProfit: number;
   status: 'completed' | 'refunded';
@@ -19,7 +20,7 @@ export interface Order {
 }
 
 export interface Package {
-  id?: string;
+  id: string;
   batchId?: string;
   tracking?: string;
   content: string;
@@ -65,6 +66,7 @@ export interface Product {
   price: number; // 零售价
   stock_warning: number; // 预警阈值
   category?: string;
+  created_at?: string;
   updated_at: string;
   is_deleted: boolean;
 }

@@ -7,6 +7,7 @@ import { migrateDataStructure } from '../db/migrateToProducts';
 import { wacCache } from '../db/wacCache';
 import { operationLogService } from '../services/operationLogService';
 import { transactionService } from '../services/transactionService';
+import { createUuid } from '../utils/uuid';
 
 // --- 单例状态 ---
 const packages = ref<Package[]>([]);
@@ -84,7 +85,7 @@ async function loadFromDB(): Promise<void> {
     sellPrice.value = sellPriceMap;
 
     // 加载products
-    products.value = productRecords;
+    products.value = productRecords.filter(record => !record.is_deleted);
 
     hasLoaded.value = true;
     console.log('数据加载完成');
@@ -99,7 +100,7 @@ async function loadFromDB(): Promise<void> {
 
 // 生成唯一ID (与migration.ts中的一致)
 function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  return createUuid();
 }
 
 // --- 持久化 (替换localStorage为IndexedDB) ---
